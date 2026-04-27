@@ -1000,36 +1000,22 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
   return applyOutlineAndShadow(out, w, h, outlineStyle);
 }
 
-// Detect background type by sampling many border pixels (not just 4
-// corners — Gemini's green can drift at corners). Returns "green" if
-// majority of border samples look meaningfully green, else "white".
+// Detect background type by counting GREEN PIXELS over the entire image
+// (not just borders — character with white shirt extending to frame
+// would falsify a border-only check). If ≥20% of pixels are clearly
+// green, treat as chroma-key plate.
 function detectBgType(orig, w, h) {
-  const samples = [];
-  // Top + bottom edge, every w/20 px
-  const xStep = Math.max(1, Math.floor(w / 20));
-  for (let x = 0; x < w; x += xStep) {
-    samples.push([x, 2]);
-    samples.push([x, h - 3]);
+  const total = w * h;
+  let greenPx = 0;
+  for (let i = 0; i < orig.length; i += 4) {
+    const greenness = (orig[i + 1] - Math.max(orig[i], orig[i + 2])) / 255;
+    if (greenness > 0.25) greenPx++;
   }
-  // Left + right edge, every h/20 px
-  const yStep = Math.max(1, Math.floor(h / 20));
-  for (let y = 0; y < h; y += yStep) {
-    samples.push([2, y]);
-    samples.push([w - 3, y]);
-  }
-  let greenCount = 0;
-  let whiteCount = 0;
-  for (const [x, y] of samples) {
-    const i = (y * w + x) * 4;
-    const r = orig[i], g = orig[i + 1], b = orig[i + 2];
-    // Green-ish: G dominates over R and B (any saturation, allow drift).
-    if (g > 100 && g > r * 1.3 && g > b * 1.3) greenCount++;
-    // White-ish: all three channels high.
-    else if (r > 220 && g > 220 && b > 220) whiteCount++;
-  }
-  const result = greenCount > whiteCount && greenCount > samples.length * 0.4
-    ? "green" : "white";
-  console.log(`[bg-detect] samples=${samples.length} green=${greenCount} white=${whiteCount} → ${result}`);
+  const greenPct = greenPx / total;
+  const result = greenPct > 0.20 ? "green" : "white";
+  console.log(
+    `[bg-detect] greenPx=${greenPx}/${total} (${(greenPct * 100).toFixed(1)}%) → ${result}`,
+  );
   return result;
 }
 
