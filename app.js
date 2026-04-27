@@ -983,6 +983,50 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground) {
     od[i + 2] = Math.max(0, Math.min(255, b));
   }
 
+  // 6. Die-cut white outline — standard LINE sticker convention. Take
+  // the current alpha mask, dilate by OUTLINE_PX, then fill the new
+  // halo zone with PURE WHITE so the sticker pops on any chat bg.
+  //
+  // Done AFTER decontamination so we layer a clean opaque white over
+  // any residual edge contamination.
+  const OUTLINE_PX = 7;
+  const haveAlpha = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < od.length; i += 4, p++) {
+    if (od[i + 3] >= 64) haveAlpha[p] = 1; // any meaningful coverage
+  }
+  // Separable dilation: horizontal then vertical pass.
+  const halfH = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let on = 0;
+      for (let dx = -OUTLINE_PX; dx <= OUTLINE_PX; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= w) continue;
+        if (haveAlpha[y * w + nx]) { on = 1; break; }
+      }
+      halfH[y * w + x] = on;
+    }
+  }
+  const dilatedHalo = new Uint8Array(w * h);
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      let on = 0;
+      for (let dy = -OUTLINE_PX; dy <= OUTLINE_PX; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        if (halfH[ny * w + x]) { on = 1; break; }
+      }
+      dilatedHalo[y * w + x] = on;
+    }
+  }
+  // Fill the halo zone (in dilation, NOT in original) with pure white.
+  for (let i = 0, p = 0; i < od.length; i += 4, p++) {
+    if (dilatedHalo[p] && !haveAlpha[p]) {
+      od[i] = 255; od[i + 1] = 255; od[i + 2] = 255;
+      od[i + 3] = 255;
+    }
+  }
+
   outCtx.putImageData(outData, 0, 0);
   return out;
 }
