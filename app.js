@@ -567,9 +567,17 @@ async function handleGridUpload(file) {
 // ------------------------------------------------------------------
 // Grid splitting
 
+// Inset each tile's crop region by this fraction on each side. Gemini's
+// 3×3 grid lines aren't pixel-perfect — a tight 1/3 crop sometimes
+// catches a sliver of the neighbor cell. 3% inset = ~20px on a 683px
+// tile, enough to dodge bleed without losing the character.
+const SPLIT_INSET_RATIO = 0.03;
+
 async function splitGrid(img) {
   const tileW = Math.floor(img.naturalWidth / 3);
   const tileH = Math.floor(img.naturalHeight / 3);
+  const insetX = Math.round(tileW * SPLIT_INSET_RATIO);
+  const insetY = Math.round(tileH * SPLIT_INSET_RATIO);
   const out = [];
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {
@@ -581,16 +589,18 @@ async function splitGrid(img) {
       tctx.fillStyle = "#ffffff";
       tctx.fillRect(0, 0, STICKER_W, STICKER_H);
 
-      // contain-fit the source tile (which is square) into 370×320 (a
-      // landscape rectangle). Center it.
-      const sx = c * tileW;
-      const sy = r * tileH;
-      const scale = Math.min(STICKER_W / tileW, STICKER_H / tileH);
-      const dw = tileW * scale;
-      const dh = tileH * scale;
+      // Crop with inset on each side, then contain-fit the cropped
+      // region into 370×320 (landscape rectangle). Centered.
+      const sx = c * tileW + insetX;
+      const sy = r * tileH + insetY;
+      const sw = tileW - 2 * insetX;
+      const sh = tileH - 2 * insetY;
+      const scale = Math.min(STICKER_W / sw, STICKER_H / sh);
+      const dw = sw * scale;
+      const dh = sh * scale;
       const dx = (STICKER_W - dw) / 2;
       const dy = (STICKER_H - dh) / 2;
-      tctx.drawImage(img, sx, sy, tileW, tileH, dx, dy, dw, dh);
+      tctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
       out.push(tileCanvas);
     }
   }
