@@ -251,6 +251,7 @@ const state = {
   tiles: [],             // [{ canvas, transparent: false, phrase, busy: false }]
   bgRemoved: false,
   removeBackgroundFn: null, // lazy-loaded @imgly/background-removal
+  lastGridPng: null,     // raw Gemini 3×3 grid PNG blob (for backup/re-split)
 };
 
 // ------------------------------------------------------------------
@@ -401,6 +402,12 @@ async function generateAll() {
     const gridImg = await loadImage(
       `data:${result.mimeType};base64,${result.data}`,
     );
+    // Save raw grid as Blob for backup-download / future re-splitting.
+    const binStr = atob(result.data);
+    const binBytes = new Uint8Array(binStr.length);
+    for (let i = 0; i < binStr.length; i++) binBytes[i] = binStr.charCodeAt(i);
+    state.lastGridPng = new Blob([binBytes], { type: result.mimeType });
+    showGridDownload();
     const tiles = await splitGrid(gridImg);
     // Gemini gives 9 tiles. LINE only accepts 8 per pack, so we show all
     // 9 and pre-select the first 8 — user can swap which one to drop.
@@ -705,6 +712,24 @@ function refreshSelectionStatus() {
   }
 }
 
+function showGridDownload() {
+  const btn = $("download-grid-btn");
+  if (btn) btn.hidden = false;
+}
+async function downloadOriginalGrid() {
+  if (!state.lastGridPng) {
+    alert("沒有原始 grid PNG — 先生成一次。");
+    return;
+  }
+  const url = URL.createObjectURL(state.lastGridPng);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `gemini-grid-${Date.now()}.png`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
 async function downloadSingleTile(idx) {
   const tile = state.tiles[idx];
   if (!tile) return;
@@ -798,6 +823,8 @@ const bgProgressText = $("bg-progress-text");
 
 bgRemoveBtn.addEventListener("click", removeAllBackgrounds);
 bgRestoreBtn.addEventListener("click", restoreAllBackgrounds);
+const downloadGridBtn = $("download-grid-btn");
+if (downloadGridBtn) downloadGridBtn.addEventListener("click", downloadOriginalGrid);
 
 // (Previously ensureBgLib loaded @imgly's ISNet model for white-bg
 // fallback. Removed — chroma-key on green is the only path now. No
