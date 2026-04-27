@@ -330,7 +330,7 @@ function buildPrompt({ nine, styleHint, withText, campaign }) {
       ? `; print the phrase "${phrase}" boldly on the sticker EXACTLY as written (preserve every character — Chinese, English, Japanese, emoji, punctuation — verbatim). Use a large rounded font with a white stroke, easy to read at thumbnail size.`
       : `; do NOT print any text on the sticker (the phrase is just the emotional cue)`;
     return withText
-      ? `  [${letter}] ${NAMES[i]} cell:\n      EXACT TEXT TO PRINT (verbatim, character-by-character, no substitution): "${phrase}"\n      TEXT STYLE: bold rounded font, dark fill (or white fill if cell bg is dark), with a thick (5-8px) PURE WHITE outline (or black outline if fill is white) hugging every glyph — must be readable on any background after the white card bg is removed. Place text at the top OR bottom edge of the cell, edge-to-edge.\n      ACTION/POSE: ${action}`
+      ? `  [${letter}] ${NAMES[i]} cell:\n      EXACT TEXT TO PRINT (verbatim, character-by-character, no substitution): "${phrase}"\n      TEXT STYLE: Impact-meme style — PURE WHITE fill with a thick (5-8px) PURE BLACK outline hugging every glyph. Bold rounded sans-serif font. Readable on any chat background. Place text at the top OR bottom edge of the cell, edge-to-edge. The black outline matches the character's black outline for visual unity.\n      ACTION/POSE: ${action}`
       : `  [${letter}] ${NAMES[i]} cell → action: ${action}${textRule}`;
   }).join("\n");
 
@@ -353,6 +353,7 @@ CHARACTER CONSISTENCY: every tile shows the SAME identifiable character from the
 STICKER FRAMING (every tile):
 - Subject is the upper body or full body of the character, fully inside the cell with comfortable margin.
 - Background is plain solid PURE WHITE (#FFFFFF). No scenery, no gradients, no patterns. This makes downstream background removal trivial.
+- CHARACTER OUTLINE: trace the entire character silhouette with a clean, uniform 2-3px PURE BLACK outline (the boundary between character and the white background). Apply consistently and identically across ALL 9 cells. This gives the sticker pack a unified "die-cut sticker" look and lets downstream bg removal find the silhouette precisely. Even photo-realistic stickers should have this clean black outline added.
 - No drop shadows touching the cell edges (small soft shadow under feet OK).
 - Bold, lively poses — readable at chat-thumbnail size (~120×120 px).
 
