@@ -15,9 +15,10 @@ const LINE_STATE_KEY = "line-oauth-state";
 const LINE_CHANNEL_ID = "2009916047";
 const DEFAULT_API_URL = "https://line-sticker-gemini.yazelinj303.workers.dev";
 const ESTIMATED_GRID_SECONDS = 50; // per 3×3 grid
-// LINE Creators Market accepts only 8/16/24/32/40 stickers per pack.
-// We hard-code 8 (the minimum) so one Gemini grid covers a whole pack:
-// 1 API call → 9 tiles → keep first 8.
+// LINE Creators Market accepts only 8/16/24/32/40 stickers per pack —
+// 8 is the minimum we ship. Gemini gives us a 3×3 grid (9 tiles), so
+// we show all 9 and let the user de-select 1 they like least before ZIP.
+const GRID_SIZE = 9;
 const PACK_SIZE = 8;
 
 // Per-slot config persisted in localStorage. length-8 array, each entry:
@@ -368,7 +369,7 @@ async function generateAll() {
   $("step-preview").hidden = false;
   const grid = $("stickers-grid");
   grid.innerHTML = "";
-  for (let i = 0; i < PACK_SIZE; i++) {
+  for (let i = 0; i < GRID_SIZE; i++) {
     grid.appendChild(buildPlaceholderCell(i));
   }
 
@@ -398,20 +399,22 @@ async function generateAll() {
       `data:${result.mimeType};base64,${result.data}`,
     );
     const tiles = await splitGrid(gridImg);
-    // Gemini gives 9 tiles in a 3×3 grid. LINE's minimum pack is 8 — we
-    // keep tiles 0..7 and discard the 9th.
-    for (let i = 0; i < PACK_SIZE; i++) {
+    // Gemini gives 9 tiles. LINE only accepts 8 per pack, so we show all
+    // 9 and pre-select the first 8 — user can swap which one to drop.
+    for (let i = 0; i < GRID_SIZE; i++) {
       const tile = {
         canvas: tiles[i],
         transparent: false,
         phrase: result.phrases?.[i] || "",
         busy: false,
+        included: i < PACK_SIZE,
       };
       state.tiles.push(tile);
       renderTileIntoCell(i, tile);
     }
+    refreshSelectionStatus();
 
-    setGenProgress(100, `完成！產出 ${PACK_SIZE} 張貼圖。`);
+    setGenProgress(100, `完成！產出 ${GRID_SIZE} 張、預設前 ${PACK_SIZE} 張打包。可點 9 號那張的「✓」改成它而排除其他。`);
     $("step-download").hidden = false;
     $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
@@ -542,19 +545,21 @@ async function handleGridUpload(file) {
   $("step-preview").hidden = false;
   const grid = $("stickers-grid");
   grid.innerHTML = "";
-  for (let i = 0; i < PACK_SIZE; i++) grid.appendChild(buildPlaceholderCell(i));
+  for (let i = 0; i < GRID_SIZE; i++) grid.appendChild(buildPlaceholderCell(i));
 
   const tiles = await splitGrid(img);
-  for (let i = 0; i < PACK_SIZE; i++) {
+  for (let i = 0; i < GRID_SIZE; i++) {
     const tile = {
       canvas: tiles[i],
       transparent: false,
       phrase: "",
       busy: false,
+      included: i < PACK_SIZE,
     };
     state.tiles.push(tile);
     renderTileIntoCell(i, tile);
   }
+  refreshSelectionStatus();
   $("step-download").hidden = false;
   $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -608,13 +613,39 @@ function renderTileIntoCell(idx, tile) {
   const cell = grid.children[idx];
   if (!cell) return;
   cell.classList.remove("placeholder");
+  cell.classList.toggle("excluded", !tile.included);
   cell.innerHTML = "";
   const img = document.createElement("img");
   img.src = tile.canvas.toDataURL("image/png");
   img.alt = `sticker ${idx + 1}`;
   cell.appendChild(img);
-  // Re-roll only available when we have the original source image (i.e.
-  // not in BYOG mode where the user uploaded a pre-made grid).
+
+  // Inclusion toggle (top-right corner). Always present.
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "tile-include-toggle";
+  toggle.title = tile.included ? "點掉 = 從打包中排除這張" : "勾起 = 納入打包";
+  toggle.textContent = tile.included ? "✓" : "✗";
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleIncluded(idx);
+  });
+  cell.appendChild(toggle);
+
+  // Per-cell download button.
+  const dl = document.createElement("button");
+  dl.type = "button";
+  dl.className = "tile-download";
+  dl.title = "單獨下載這張 PNG";
+  dl.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
+  dl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    downloadSingleTile(idx);
+  });
+  cell.appendChild(dl);
+
+  // Re-roll only available when we have the original source image.
   if (state.sourceFile) {
     const overlay = document.createElement("div");
     overlay.className = "edit-overlay";
@@ -622,6 +653,53 @@ function renderTileIntoCell(idx, tile) {
     cell.appendChild(overlay);
     cell.onclick = () => promptRerollTile(idx);
   }
+}
+
+function toggleIncluded(idx) {
+  const tile = state.tiles[idx];
+  if (!tile) return;
+  // If user is trying to INCLUDE this one but we already have PACK_SIZE
+  // included, prompt to swap.
+  const currentlyIncluded = state.tiles.filter((t) => t.included).length;
+  if (!tile.included && currentlyIncluded >= PACK_SIZE) {
+    alert(
+      `已經有 ${PACK_SIZE} 張被選了。請先取消另一張，再勾這張。\n\n` +
+      `(LINE 規定每包剛好 ${PACK_SIZE} 張)`,
+    );
+    return;
+  }
+  tile.included = !tile.included;
+  renderTileIntoCell(idx, tile);
+  refreshSelectionStatus();
+}
+
+function refreshSelectionStatus() {
+  const sel = $("selection-status");
+  if (!sel) return;
+  const included = state.tiles.filter((t) => t.included).length;
+  if (included === PACK_SIZE) {
+    sel.textContent = `✅ 已選 ${PACK_SIZE}/${PACK_SIZE} 張，可以下載 ZIP`;
+    sel.className = "selection-status ready";
+  } else if (included < PACK_SIZE) {
+    sel.textContent = `⚠ 還差 ${PACK_SIZE - included} 張才能打包（目前 ${included}/${PACK_SIZE}）`;
+    sel.className = "selection-status short";
+  } else {
+    sel.textContent = `❌ 多選了 ${included - PACK_SIZE} 張（最多 ${PACK_SIZE}）`;
+    sel.className = "selection-status over";
+  }
+}
+
+async function downloadSingleTile(idx) {
+  const tile = state.tiles[idx];
+  if (!tile) return;
+  const blob = await canvasToBlob(tile.canvas, "image/png");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sticker-${String(idx + 1).padStart(2, "0")}.png`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
 }
 
 // Quick popup: let user override the phrase before re-calling Gemini.
@@ -679,6 +757,7 @@ async function rerollTile(idx, overridePhrase = null) {
       transparent: false,
       phrase: effectivePhrase || result.phrases?.[0] || tile.phrase,
       busy: false,
+      included: tile.included,  // preserve selection
     };
     // Re-rerolled tiles have white bg again — bgRemoved no longer guaranteed.
     if (state.bgRemoved) state.bgRemoved = false;
@@ -749,7 +828,14 @@ async function removeAllBackgrounds() {
       const c = document.createElement("canvas");
       c.width = STICKER_W;
       c.height = STICKER_H;
-      c.getContext("2d").drawImage(cleanedImg, 0, 0, STICKER_W, STICKER_H);
+      const ctx = c.getContext("2d");
+      ctx.drawImage(cleanedImg, 0, 0, STICKER_W, STICKER_H);
+      // @imgly's person-segmentation model treats the printed text as
+      // background and fades / removes it. Re-stamp the phrase on top
+      // (cleanly, on transparent bg) so it's preserved & readable.
+      if (state.withText && tile.phrase) {
+        drawTextOverlay(ctx, tile.phrase, STICKER_W, STICKER_H);
+      }
       tile.canvas = c;
       tile.transparent = true;
       renderTileIntoCell(i, tile);
@@ -793,6 +879,40 @@ function setBgProgress(pct, text) {
   bgProgressText.textContent = text;
 }
 
+// Re-stamp the phrase onto a sticker after bg removal. Bold rounded font
+// with a thick white stroke so it stays legible on any chat background.
+function drawTextOverlay(ctx, phrase, w, h) {
+  if (!phrase) return;
+  // Auto-size: shrink for longer text so it fits the cell width
+  let fontSize = Math.floor(h * 0.18);
+  ctx.save();
+  ctx.font =
+    `900 ${fontSize}px "M PLUS Rounded 1c", "Noto Sans TC", sans-serif`;
+  // Iteratively shrink if too wide
+  while (
+    fontSize > 18 &&
+    ctx.measureText(phrase).width > w * 0.92
+  ) {
+    fontSize -= 2;
+    ctx.font =
+      `900 ${fontSize}px "M PLUS Rounded 1c", "Noto Sans TC", sans-serif`;
+  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.lineJoin = "round";
+  ctx.miterLimit = 2;
+  const x = w / 2;
+  const y = h - Math.max(12, fontSize * 0.25);
+  // Heavy white outer stroke for legibility on any bg
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = Math.max(8, fontSize * 0.22);
+  ctx.strokeText(phrase, x, y);
+  // Dark fill on top
+  ctx.fillStyle = "#1f2d24";
+  ctx.fillText(phrase, x, y);
+  ctx.restore();
+}
+
 // ------------------------------------------------------------------
 // Step 4 — download
 
@@ -804,23 +924,28 @@ async function downloadZip() {
     alert("JSZip 未載入");
     return;
   }
+  const includedTiles = state.tiles.filter((t) => t.included);
+  if (includedTiles.length !== PACK_SIZE) {
+    alert(
+      `LINE 規定每包剛好 ${PACK_SIZE} 張，目前選了 ${includedTiles.length} 張。請調整再下載。`,
+    );
+    return;
+  }
   const zip = new JSZip();
 
-  // Each sticker — 370 × 320, PNG.
-  for (let i = 0; i < state.tiles.length; i++) {
-    const tile = state.tiles[i];
+  // Each sticker — 370 × 320, PNG. Numbered 01..08 in the order they
+  // appear in the grid (skipping excluded ones, but renumbering tightly).
+  for (let i = 0; i < includedTiles.length; i++) {
+    const tile = includedTiles[i];
     const blob = await canvasToBlob(tile.canvas, "image/png");
     const name = `${String(i + 1).padStart(2, "0")}.png`;
     zip.file(name, blob);
   }
 
-  // Main image — 240 × 240, derived from sticker 01 cropped square.
-  const mainCanvas = makeMainImage(state.tiles[0].canvas);
-  zip.file("main.png", await canvasToBlob(mainCanvas, "image/png"));
-
-  // Tab image — 96 × 74, derived from sticker 01.
-  const tabCanvas = makeTabImage(state.tiles[0].canvas);
-  zip.file("tab.png", await canvasToBlob(tabCanvas, "image/png"));
+  // Main + tab use the first INCLUDED tile (not necessarily tiles[0]).
+  const heroCanvas = includedTiles[0].canvas;
+  zip.file("main.png", await canvasToBlob(makeMainImage(heroCanvas), "image/png"));
+  zip.file("tab.png", await canvasToBlob(makeTabImage(heroCanvas), "image/png"));
 
   zip.file("README.txt", buildReadmeText(currentCampaign()));
 

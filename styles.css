@@ -824,8 +824,93 @@ button, .primary, .ghost {
   font-weight: 600;
   font-size: 0.85rem;
   transition: opacity 0.15s ease;
+  pointer-events: none;
 }
 .sticker-cell:hover .edit-overlay { opacity: 1; }
+
+.sticker-cell.excluded {
+  opacity: 0.35;
+  filter: grayscale(0.6);
+}
+.sticker-cell.excluded::before {
+  content: "排除";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #c0392b;
+  background: rgba(255, 255, 255, 0.4);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.tile-include-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: var(--line-green);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transition: background 0.12s ease;
+}
+.tile-include-toggle:hover { background: var(--line-green-hover); }
+.sticker-cell.excluded .tile-include-toggle {
+  background: #c0392b;
+}
+.sticker-cell.excluded .tile-include-toggle:hover { background: #a8302a; }
+
+.tile-download {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  transition: background 0.12s ease, transform 0.1s ease;
+}
+.tile-download:hover { background: #fff; transform: scale(1.1); }
+
+.selection-status {
+  margin: 0.25rem 0 0.85rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+}
+.selection-status.ready { background: var(--line-green-soft); color: var(--line-green-hover); }
+.selection-status.short { background: #fff4e0; color: #c8843a; }
+.selection-status.over  { background: #ffe5e2; color: #c0392b; }
+
+.footer-note {
+  font-size: 0.78rem;
+  opacity: 0.75;
+}
 .sticker-cell.busy {
   pointer-events: none;
   opacity: 0.5;
