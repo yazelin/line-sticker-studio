@@ -111,6 +111,8 @@
 </header>
 
 <main>
+  <p class="path-picker-hint">① 選一條輸入路徑（A 主流 / B 省 API），然後到 ② 設定樣式</p>
+
   <section class="card" id="step-upload">
     <h2>🅰 主路徑：上傳角色圖讓 AI 產（每天 3 次免費，需 LINE 登入）</h2>
     <p class="hint">建議：主體清楚、單純背景的正方形圖。AI 會學起來、一次產 8 張同角色不同姿勢/表情的貼圖（LINE 規定的最小套組）。</p>
@@ -133,6 +135,30 @@
         換一張
       </button>
     </div>
+  </section>
+
+  <section class="card" id="step-byog">
+    <h2>🅱 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）</h2>
+    <p class="hint">已經自己用 Gemini / ChatGPT 跑出 3×3 圖了？<strong>不用先上傳角色圖</strong>，直接傳 3×3 圖，我們就幫你切 8 張、打包 ZIP。</p>
+
+    <details class="tip-box">
+      <summary><strong>怎麼自己產 3×3 圖？</strong>（點開看做法）</summary>
+      <div class="tip-body">
+        <ol>
+          <li>到下面「② 選樣式 + 短語」設定好你要的風格 / 活動</li>
+          <li>點「自訂 8 格 → 複製 prompt 到 Gemini」拿到一段完整 prompt</li>
+          <li>到 <a href="https://gemini.google.com" target="_blank" rel="noopener">gemini.google.com</a>（或其他 AI 圖像工具），附上你的角色圖、貼那段 prompt</li>
+          <li>等 Gemini 產出一張 3×3 圖、下載</li>
+          <li>回來這裡上面這個框上傳，我們會自動切成 8 張 LINE 規格貼圖、打包 ZIP</li>
+        </ol>
+      </div>
+    </details>
+
+    <label class="upload-box compact" id="grid-drop-zone">
+      <input type="file" id="grid-file-input" accept="image/*" hidden />
+      <svg class="upload-icon"><use href="#i-upload"/></svg>
+      <span>點擊或拖曳「3×3 圖」到這裡</span>
+    </label>
   </section>
 
   <section class="card" id="step-config">
@@ -211,30 +237,6 @@
       </menu>
     </form>
   </dialog>
-
-  <section class="card" id="step-byog">
-    <h2>🅱 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）</h2>
-    <p class="hint">已經自己用 Gemini / ChatGPT 跑出 3×3 圖了？<strong>不用先上傳角色圖</strong>，直接傳 3×3 圖，我們就幫你切 8 張、打包 ZIP。</p>
-
-    <details class="tip-box">
-      <summary><strong>怎麼自己產 3×3 圖？</strong>（點開看做法）</summary>
-      <div class="tip-body">
-        <ol>
-          <li>到上面「② 選樣式 + 短語」設定好你要的風格 / 活動</li>
-          <li>點「自訂 8 格 → 複製 prompt 到 Gemini」拿到一段完整 prompt</li>
-          <li>到 <a href="https://gemini.google.com" target="_blank" rel="noopener">gemini.google.com</a>（或其他 AI 圖像工具），附上你的角色圖、貼那段 prompt</li>
-          <li>等 Gemini 產出一張 3×3 圖、下載</li>
-          <li>回來這裡丟到下面那個上傳框，我們會自動切成 8 張 LINE 規格貼圖、打包 ZIP</li>
-        </ol>
-      </div>
-    </details>
-
-    <label class="upload-box compact" id="grid-drop-zone">
-      <input type="file" id="grid-file-input" accept="image/*" hidden />
-      <svg class="upload-icon"><use href="#i-upload"/></svg>
-      <span>點擊或拖曳「3×3 圖」到這裡</span>
-    </label>
-  </section>
 
   <section class="card" id="step-preview" hidden>
     <h2>③ 預覽 + 去背</h2>

@@ -825,13 +825,27 @@ async function removeAllBackgrounds() {
   try {
     for (let i = 0; i < state.tiles.length; i++) {
       const tile = state.tiles[i];
-      if (tile.transparent) continue;
+      // ALWAYS run on the saved original (so re-running with a different
+      // outline style works correctly, and "restore + re-bg-remove" gives
+      // a clean result instead of layering on top of a previous run).
+      if (!tile.originalCanvas) {
+        // First time — snapshot the pristine Gemini-cropped canvas.
+        const snap = document.createElement("canvas");
+        snap.width = tile.canvas.width;
+        snap.height = tile.canvas.height;
+        snap.getContext("2d").drawImage(tile.canvas, 0, 0);
+        tile.originalCanvas = snap;
+      }
       setBgProgress(
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
       const outlineStyle = $("outline-style")?.value || "fancy";
-      const c = await bgRemoveWithTextPreserve(tile.canvas, removeBackground, outlineStyle);
+      const c = await bgRemoveWithTextPreserve(
+        tile.originalCanvas,
+        removeBackground,
+        outlineStyle,
+      );
       tile.canvas = c;
       tile.transparent = true;
       renderTileIntoCell(i, tile);
@@ -848,26 +862,23 @@ async function removeAllBackgrounds() {
 }
 
 async function restoreAllBackgrounds() {
-  // Re-fetch from current state isn't possible — the original white-bg
-  // canvas was overwritten. So restoring just paints white behind any
-  // transparent pixels (visually equivalent to the AI-original).
+  // Real restore: replace each tile.canvas with the saved snapshot of
+  // the pristine Gemini-cropped tile (taken before bg removal). This
+  // fully undoes the bg removal — including outline / shadow / etc.
   for (let i = 0; i < state.tiles.length; i++) {
     const tile = state.tiles[i];
-    if (!tile.transparent) continue;
+    if (!tile.originalCanvas) continue;
     const c = document.createElement("canvas");
-    c.width = STICKER_W;
-    c.height = STICKER_H;
-    const ctx = c.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, STICKER_W, STICKER_H);
-    ctx.drawImage(tile.canvas, 0, 0);
+    c.width = tile.originalCanvas.width;
+    c.height = tile.originalCanvas.height;
+    c.getContext("2d").drawImage(tile.originalCanvas, 0, 0);
     tile.canvas = c;
     tile.transparent = false;
     renderTileIntoCell(i, tile);
   }
   state.bgRemoved = false;
   bgRestoreBtn.hidden = true;
-  setBgProgress(0, "已還原白底（注意：邊緣去背過的細節不會回來）");
+  setBgProgress(0, "已還原成 Gemini 原圖（白底+黑邊）。可重新選邊框樣式再去背。");
 }
 
 function setBgProgress(pct, text) {
@@ -902,44 +913,10 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
   const origData = origCtx.getImageData(0, 0, w, h);
   const orig = origData.data;
 
-  // 1. Dark mask (text + character outlines).
-  const DARK_LUMA = 110; // 0..255
-  const darkMask = new Uint8Array(w * h);
-  for (let i = 0, p = 0; i < orig.length; i += 4, p++) {
-    const lum = 0.299 * orig[i] + 0.587 * orig[i + 1] + 0.114 * orig[i + 2];
-    if (lum < DARK_LUMA) darkMask[p] = 1;
-  }
-
-  // 2. Dilate by N (separable for perf — O(w*h*N) instead of O(w*h*N²)).
-  const N = 6;
-  const tmp = new Uint8Array(w * h);
-  // Horizontal pass
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let on = 0;
-      for (let dx = -N; dx <= N; dx++) {
-        const nx = x + dx;
-        if (nx < 0 || nx >= w) continue;
-        if (darkMask[y * w + nx]) { on = 1; break; }
-      }
-      tmp[y * w + x] = on;
-    }
-  }
-  const dilated = new Uint8Array(w * h);
-  // Vertical pass
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      let on = 0;
-      for (let dy = -N; dy <= N; dy++) {
-        const ny = y + dy;
-        if (ny < 0 || ny >= h) continue;
-        if (tmp[ny * w + x]) { on = 1; break; }
-      }
-      dilated[y * w + x] = on;
-    }
-  }
-
-  // 3. Run @imgly bg removal on the original blob.
+  // 1. Run @imgly bg removal FIRST so we can use its mask to tell apart
+  //    "character dark stuff (hair, eyes)" from "text strokes":
+  //      character dark = dark in orig AND kept by @imgly  → trust @imgly
+  //      text strokes   = dark in orig AND removed by @imgly → restore
   const blob = await new Promise((res) =>
     srcCanvas.toBlob(res, "image/png"),
   );
@@ -952,7 +929,29 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
   const outData = outCtx.getImageData(0, 0, w, h);
   const od = outData.data;
 
-  // 4. Restore dark-near pixels from the original.
+  // 2. Build TEXT-ONLY dark mask. Pixels that are dark in original AND
+  //    transparent-ish in @imgly's output = printed text (ISNet doesn't
+  //    recognize text as foreground). Character dark features (hair,
+  //    eyes, black outline) stay alpha-high in @imgly's output and
+  //    DON'T get included — so we don't dilate-restore around them and
+  //    don't pull in the white background bordering hair edges.
+  const DARK_LUMA = 110;
+  const KEPT_BY_IMGLY = 100; // alpha threshold
+  const textDark = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < orig.length; i += 4, p++) {
+    const lum = 0.299 * orig[i] + 0.587 * orig[i + 1] + 0.114 * orig[i + 2];
+    if (lum < DARK_LUMA && od[i + 3] < KEPT_BY_IMGLY) textDark[p] = 1;
+  }
+
+  // 3. Dilate text mask by N to also capture each glyph's white outline
+  //    (text in our prompt is "white fill + black outline" → we want
+  //    to preserve the black outline AND the area immediately around).
+  const N = 5;
+  const dilated = dilateMask(textDark, w, h, N);
+
+  // 4. Restore text-and-its-halo pixels from the original. Character
+  //    pixels keep @imgly's smooth alpha — no more "white halo around
+  //    hair" because we never widened the mask there.
   for (let i = 0, p = 0; i < od.length; i += 4, p++) {
     if (dilated[p]) {
       od[i] = orig[i];

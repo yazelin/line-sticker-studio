@@ -233,6 +233,17 @@ main {
   padding: 1rem 1.25rem 2rem;
 }
 
+.path-picker-hint {
+  text-align: center;
+  margin: 0.5rem 0 1rem;
+  padding: 0.55rem 1rem;
+  background: var(--line-green-soft);
+  color: var(--line-green-hover);
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);
