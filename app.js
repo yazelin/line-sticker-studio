@@ -1042,14 +1042,13 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
     }
     od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
 
-    // Decontamination — subtract green influence from edge pixels.
-    if (alpha > 5 && alpha < 250) {
-      const a = alpha / 255;
-      const inv = 1 - a;
-      // bg color = (0, 255, 0); fg = (composite - inv*bg) / a
-      od[i]     = Math.max(0, Math.min(255, (r - inv * 0)   / a));
-      od[i + 1] = Math.max(0, Math.min(255, (g - inv * 255) / a));
-      od[i + 2] = Math.max(0, Math.min(255, (b - inv * 0)   / a));
+    // Despill — standard chroma-key technique (also seen in Meiko's
+    // line-sticker-factory): for any non-fully-transparent pixel where
+    // green is the dominant channel, replace G with (R+B)/2 to kill
+    // the green color contamination on edge pixels. Simpler and more
+    // visually correct than inverting the alpha-blend formula.
+    if (alpha > 0 && g > r && g > b) {
+      od[i + 1] = (r + b) >> 1;
     }
   }
   outCtx.putImageData(outData, 0, 0);
