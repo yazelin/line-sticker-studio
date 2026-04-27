@@ -1063,6 +1063,39 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
   }
   const total = orig.length / 4;
   console.log(`[chroma-key] keyed=${(100*nKeyed/total).toFixed(0)}% kept=${(100*nKept/total).toFixed(0)}% partial=${(100*nPartial/total).toFixed(0)}%`);
+
+  // Edge cleanup pass: any partial-alpha pixel adjacent to a fully-
+  // transparent neighbor gets killed too. Eliminates the 1-2 px green
+  // halo that survives despill — the fringe pixels nearest the bg
+  // always carry the most green contamination.
+  const ERODE_PASSES = 1;
+  let nEroded = 0;
+  for (let pass = 0; pass < ERODE_PASSES; pass++) {
+    // Snapshot alpha so a single pass doesn't cascade-erode
+    const alphaSnap = new Uint8Array(total);
+    for (let i = 0, p = 0; i < od.length; i += 4, p++) alphaSnap[p] = od[i + 3];
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const p = y * w + x;
+        const a = alphaSnap[p];
+        if (a === 0 || a === 255) continue;
+        // Check 8 neighbors for any fully-transparent
+        let touchesEmpty = false;
+        for (let dy = -1; dy <= 1 && !touchesEmpty; dy++) {
+          for (let dx = -1; dx <= 1 && !touchesEmpty; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            if (alphaSnap[(y + dy) * w + (x + dx)] === 0) touchesEmpty = true;
+          }
+        }
+        if (touchesEmpty) {
+          od[p * 4 + 3] = 0;
+          nEroded++;
+        }
+      }
+    }
+  }
+  console.log(`[chroma-key] eroded ${nEroded} fringe pixels`);
+
   outCtx.putImageData(outData, 0, 0);
   return applyOutlineAndShadow(out, w, h, outlineStyle);
 }
