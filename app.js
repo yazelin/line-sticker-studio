@@ -997,22 +997,37 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
   return applyOutlineAndShadow(out, w, h, outlineStyle);
 }
 
-// Detect background type by sampling 4 corner pixels. Returns "green"
-// if majority are very-saturated-green (chroma-key plate), else "white".
+// Detect background type by sampling many border pixels (not just 4
+// corners — Gemini's green can drift at corners). Returns "green" if
+// majority of border samples look meaningfully green, else "white".
 function detectBgType(orig, w, h) {
-  const samples = [
-    [0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1],
-  ];
+  const samples = [];
+  // Top + bottom edge, every w/20 px
+  const xStep = Math.max(1, Math.floor(w / 20));
+  for (let x = 0; x < w; x += xStep) {
+    samples.push([x, 2]);
+    samples.push([x, h - 3]);
+  }
+  // Left + right edge, every h/20 px
+  const yStep = Math.max(1, Math.floor(h / 20));
+  for (let y = 0; y < h; y += yStep) {
+    samples.push([2, y]);
+    samples.push([w - 3, y]);
+  }
   let greenCount = 0;
+  let whiteCount = 0;
   for (const [x, y] of samples) {
     const i = (y * w + x) * 4;
     const r = orig[i], g = orig[i + 1], b = orig[i + 2];
-    // Pure neon green has G high, R+B low. Allow some Gemini drift.
-    if (g > 180 && r < 130 && b < 130 && (g - Math.max(r, b)) > 60) {
-      greenCount++;
-    }
+    // Green-ish: G dominates over R and B (any saturation, allow drift).
+    if (g > 100 && g > r * 1.3 && g > b * 1.3) greenCount++;
+    // White-ish: all three channels high.
+    else if (r > 220 && g > 220 && b > 220) whiteCount++;
   }
-  return greenCount >= 3 ? "green" : "white";
+  const result = greenCount > whiteCount && greenCount > samples.length * 0.4
+    ? "green" : "white";
+  console.log(`[bg-detect] samples=${samples.length} green=${greenCount} white=${whiteCount} → ${result}`);
+  return result;
 }
 
 // Chroma-key out a green (#00FF00) background with anti-alias decontamination.
@@ -1025,6 +1040,7 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
   const outData = outCtx.createImageData(w, h);
   const od = outData.data;
 
+  let nKeyed = 0, nKept = 0, nPartial = 0;
   for (let i = 0; i < orig.length; i += 4) {
     const r = orig[i], g = orig[i + 1], b = orig[i + 2];
     // "Green excess" = how much greener than red/blue. Pure green = 255-ish,
@@ -1041,6 +1057,9 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
       alpha = Math.round(255 * (100 - greenExcess) / 80);
     }
     od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
+    if (alpha === 0) nKeyed++;
+    else if (alpha === 255) nKept++;
+    else nPartial++;
 
     // Despill — standard chroma-key technique (also seen in Meiko's
     // line-sticker-factory): for any non-fully-transparent pixel where
@@ -1051,6 +1070,8 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
       od[i + 1] = (r + b) >> 1;
     }
   }
+  const total = orig.length / 4;
+  console.log(`[chroma-key] keyed=${(100*nKeyed/total).toFixed(0)}% kept=${(100*nKept/total).toFixed(0)}% partial=${(100*nPartial/total).toFixed(0)}%`);
   outCtx.putImageData(outData, 0, 0);
   return applyOutlineAndShadow(out, w, h, outlineStyle);
 }
