@@ -241,6 +241,14 @@
     <p class="hint">點任一張可以重抽（仍會耗 API 呼叫）。LINE 上架需要透明背景，按下面按鈕在你的瀏覽器內跑去背模型，圖片不會上傳到任何伺服器。</p>
 
     <div class="preview-actions">
+      <label class="field" style="margin-right:0.5rem">
+        邊框樣式
+        <select id="outline-style">
+          <option value="none">無邊框（純去背）</option>
+          <option value="plain">7px 白邊（簡約）</option>
+          <option value="fancy" selected>7px 白邊 + 浮起感（LINE Friends 風）</option>
+        </select>
+      </label>
       <button class="primary" id="bg-remove-btn">
         <svg class="btn-icon"><use href="#i-scissors"/></svg>
         全部去背（瀏覽器內 AI）

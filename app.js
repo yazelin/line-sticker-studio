@@ -830,7 +830,8 @@ async function removeAllBackgrounds() {
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
-      const c = await bgRemoveWithTextPreserve(tile.canvas, removeBackground);
+      const outlineStyle = $("outline-style")?.value || "fancy";
+      const c = await bgRemoveWithTextPreserve(tile.canvas, removeBackground, outlineStyle);
       tile.canvas = c;
       tile.transparent = true;
       renderTileIntoCell(i, tile);
@@ -892,7 +893,7 @@ function setBgProgress(pct, text) {
 // Result: Gemini's exact text (including stylized strokes, white halo,
 // any tear-drop integration) is preserved; only the truly empty white
 // card area becomes transparent. No more double text, no more ghosting.
-async function bgRemoveWithTextPreserve(srcCanvas, removeBackground) {
+async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyle = "fancy") {
   const w = srcCanvas.width;
   const h = srcCanvas.height;
 
@@ -983,28 +984,36 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground) {
     od[i + 2] = Math.max(0, Math.min(255, b));
   }
 
-  // 6. Die-cut white outline + 2px soft outer feather — standard LINE
-  //    sticker convention. The 7px solid outline pops on any chat bg;
-  //    the 2px feather softens the outer edge so it doesn't look like
-  //    cardboard cut-out.
+  // 6. Die-cut white outline + 2px soft outer feather — common (not
+  //    universal) LINE convention. Skipped entirely when style="none".
+  if (outlineStyle === "none") {
+    outCtx.putImageData(outData, 0, 0);
+    return out;
+  }
   const OUTLINE_PX = 7;
-  const FEATHER_PX = 2;
+  const FEATHER_PX = outlineStyle === "fancy" ? 2 : 0;
   const baseAlpha = new Uint8Array(w * h);
   for (let i = 0, p = 0; i < od.length; i += 4, p++) {
     if (od[i + 3] >= 64) baseAlpha[p] = 1;
   }
   const dil7 = dilateMask(baseAlpha, w, h, OUTLINE_PX);
-  const dil8 = dilateMask(baseAlpha, w, h, OUTLINE_PX + 1);
-  const dil9 = dilateMask(baseAlpha, w, h, OUTLINE_PX + FEATHER_PX);
+  const dil8 = FEATHER_PX > 0 ? dilateMask(baseAlpha, w, h, OUTLINE_PX + 1) : null;
+  const dil9 = FEATHER_PX > 1 ? dilateMask(baseAlpha, w, h, OUTLINE_PX + FEATHER_PX) : null;
   for (let i = 0, p = 0; i < od.length; i += 4, p++) {
     if (baseAlpha[p]) continue;
     if (dil7[p]) {
       od[i] = 255; od[i + 1] = 255; od[i + 2] = 255; od[i + 3] = 255;
-    } else if (dil8[p]) {
+    } else if (dil8 && dil8[p]) {
       od[i] = 255; od[i + 1] = 255; od[i + 2] = 255; od[i + 3] = 180;
-    } else if (dil9[p]) {
+    } else if (dil9 && dil9[p]) {
       od[i] = 255; od[i + 1] = 255; od[i + 2] = 255; od[i + 3] = 100;
     }
+  }
+
+  // Plain style stops here — no drop shadow.
+  if (outlineStyle === "plain") {
+    outCtx.putImageData(outData, 0, 0);
+    return out;
   }
 
   // 7. Soft drop shadow — 2-3px offset down-right, 2px blur, ~70 α.
