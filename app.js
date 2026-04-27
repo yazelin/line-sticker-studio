@@ -820,22 +820,7 @@ async function removeAllBackgrounds() {
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
-      const blob = await new Promise((res) =>
-        tile.canvas.toBlob(res, "image/png"),
-      );
-      const cleanedBlob = await removeBackground(blob);
-      const cleanedImg = await loadImage(URL.createObjectURL(cleanedBlob));
-      const c = document.createElement("canvas");
-      c.width = STICKER_W;
-      c.height = STICKER_H;
-      const ctx = c.getContext("2d");
-      ctx.drawImage(cleanedImg, 0, 0, STICKER_W, STICKER_H);
-      // @imgly's person-segmentation model treats the printed text as
-      // background and fades / removes it. Re-stamp the phrase on top
-      // (cleanly, on transparent bg) so it's preserved & readable.
-      if (state.withText && tile.phrase) {
-        drawTextOverlay(ctx, tile.phrase, STICKER_W, STICKER_H);
-      }
+      const c = await bgRemoveWithTextPreserve(tile.canvas, removeBackground);
       tile.canvas = c;
       tile.transparent = true;
       renderTileIntoCell(i, tile);
@@ -879,8 +864,100 @@ function setBgProgress(pct, text) {
   bgProgressText.textContent = text;
 }
 
+// Approach D — pixel-level smart bg removal that preserves Gemini's
+// drawn text (and its white outline) while cleanly removing the white
+// card background.
+//
+// Algorithm:
+//   1. Build a "dark mask" from the original — pixels darker than a
+//      luma threshold are likely text strokes / character details.
+//   2. Dilate that mask by N pixels using a separable filter so the
+//      mask covers each dark pixel's surrounding white halo (the text
+//      outline + character anti-alias edges).
+//   3. Run @imgly bg removal as usual.
+//   4. For every pixel inside the dilated mask, force-restore from the
+//      original (color + alpha=255). Outside the mask, take @imgly's
+//      output verbatim — that's where the white card bg gets dropped.
+//
+// Result: Gemini's exact text (including stylized strokes, white halo,
+// any tear-drop integration) is preserved; only the truly empty white
+// card area becomes transparent. No more double text, no more ghosting.
+async function bgRemoveWithTextPreserve(srcCanvas, removeBackground) {
+  const w = srcCanvas.width;
+  const h = srcCanvas.height;
+
+  // Read original pixels.
+  const origCtx = srcCanvas.getContext("2d");
+  const origData = origCtx.getImageData(0, 0, w, h);
+  const orig = origData.data;
+
+  // 1. Dark mask (text + character outlines).
+  const DARK_LUMA = 110; // 0..255
+  const darkMask = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < orig.length; i += 4, p++) {
+    const lum = 0.299 * orig[i] + 0.587 * orig[i + 1] + 0.114 * orig[i + 2];
+    if (lum < DARK_LUMA) darkMask[p] = 1;
+  }
+
+  // 2. Dilate by N (separable for perf — O(w*h*N) instead of O(w*h*N²)).
+  const N = 6;
+  const tmp = new Uint8Array(w * h);
+  // Horizontal pass
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let on = 0;
+      for (let dx = -N; dx <= N; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= w) continue;
+        if (darkMask[y * w + nx]) { on = 1; break; }
+      }
+      tmp[y * w + x] = on;
+    }
+  }
+  const dilated = new Uint8Array(w * h);
+  // Vertical pass
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      let on = 0;
+      for (let dy = -N; dy <= N; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        if (tmp[ny * w + x]) { on = 1; break; }
+      }
+      dilated[y * w + x] = on;
+    }
+  }
+
+  // 3. Run @imgly bg removal on the original blob.
+  const blob = await new Promise((res) =>
+    srcCanvas.toBlob(res, "image/png"),
+  );
+  const cleanedBlob = await removeBackground(blob);
+  const cleanedImg = await loadImage(URL.createObjectURL(cleanedBlob));
+  const out = document.createElement("canvas");
+  out.width = w; out.height = h;
+  const outCtx = out.getContext("2d");
+  outCtx.drawImage(cleanedImg, 0, 0, w, h);
+  const outData = outCtx.getImageData(0, 0, w, h);
+  const od = outData.data;
+
+  // 4. Restore dark-near pixels from the original.
+  for (let i = 0, p = 0; i < od.length; i += 4, p++) {
+    if (dilated[p]) {
+      od[i] = orig[i];
+      od[i + 1] = orig[i + 1];
+      od[i + 2] = orig[i + 2];
+      od[i + 3] = 255;
+    }
+  }
+  outCtx.putImageData(outData, 0, 0);
+  return out;
+}
+
 // Re-stamp the phrase onto a sticker after bg removal. Bold rounded font
 // with a thick white stroke so it stays legible on any chat background.
+// (No longer used by default — Approach D preserves Gemini's text — but
+// kept as a fallback / for future "force re-render" option.)
 function drawTextOverlay(ctx, phrase, w, h) {
   if (!phrase) return;
   // Auto-size: shrink for longer text so it fits the cell width
@@ -930,6 +1007,25 @@ async function downloadZip() {
       `LINE 規定每包剛好 ${PACK_SIZE} 張，目前選了 ${includedTiles.length} 張。請調整再下載。`,
     );
     return;
+  }
+  // Safety: LINE requires transparent PNGs. If user hasn't clicked
+  // "全部去背" yet, the canvases still have a solid white background.
+  const anyTransparent = includedTiles.some((t) => t.transparent);
+  if (!anyTransparent) {
+    const proceed = confirm(
+      "⚠ 還沒去背！下載的 PNG 都是白底 (opaque)，LINE Creators Market 上架時可能被退件（規定透明背景）。\n\n" +
+      "→ 確定：先去背再下載 (推薦) — 我會自動執行去背\n" +
+      "→ 取消：硬要下載 opaque 版本\n",
+    );
+    if (proceed) {
+      // Run bg removal then re-trigger download.
+      await removeAllBackgrounds();
+      // After bg removal, check again — if it succeeded, retry download.
+      if (state.tiles.some((t) => t.transparent)) {
+        return downloadZip();
+      }
+      // If still no transparency, fall through and download opaque (with no further confirm).
+    }
   }
   const zip = new JSZip();
 
