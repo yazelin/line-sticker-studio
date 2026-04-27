@@ -261,6 +261,93 @@ main {
   font-size: 0.92rem;
 }
 
+.rules-banner {
+  margin: 0.5rem 0 1rem;
+  padding: 1rem 1.2rem 1.1rem;
+  background: #fff7e8;
+  border: 2px solid #e4bf7a;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+.rules-banner h3 {
+  margin: 0 0 0.3rem;
+  color: #6e4c10;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.rules-banner ul {
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 1.2rem;
+}
+.rules-banner ul li { margin: 0.3rem 0; }
+.rules-banner code, .rules-banner a {
+  color: #6e4c10;
+  font-weight: 600;
+}
+.rules-banner a {
+  text-decoration: none;
+  border-bottom: 1px dotted #d4a24a;
+}
+.rules-banner a:hover { border-bottom-style: solid; }
+.rules-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.85rem;
+  background: #fff;
+  border: 1px solid #e4bf7a;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+}
+.rules-check input { margin-top: 0.2rem; flex-shrink: 0; }
+.rules-check span { font-size: 0.88rem; color: var(--text); }
+
+.rules-banner.acked {
+  padding: 0.55rem 0.95rem;
+  background: var(--line-green-soft);
+  border: 1px solid var(--line-green);
+}
+.rules-banner.acked h3,
+.rules-banner.acked .hint,
+.rules-banner.acked ul { display: none; }
+.rules-banner.acked .rules-check {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+.rules-banner.acked .rules-check::before {
+  content: "✅ 已確認 LINE 規定 — ";
+  color: var(--line-green-hover);
+  font-weight: 700;
+}
+.rules-banner.acked .rules-check span { font-size: 0.82rem; }
+.rules-banner.acked .rules-check input { display: none; }
+
+.upload-box.locked {
+  pointer-events: none;
+  opacity: 0.45;
+  filter: grayscale(0.5);
+  position: relative;
+}
+.upload-box.locked::after {
+  content: "🔒 請先勾選最上方的 LINE 規定確認";
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e4bf7a;
+  color: #6e4c10;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .card {
   background: var(--card);
   border: 1px solid var(--border);

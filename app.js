@@ -1858,6 +1858,22 @@ refreshSlotStatus();
 // step-config is always visible now (so BYOG users can use settings dialog
 // to copy prompt for Gemini), so eager-load campaigns at boot.
 ensureCampaignsLoaded().then(renderCampaignPicker);
+
+// LINE rules acknowledgment — gate both upload boxes until user checks.
+const RULES_ACK_KEY = "line-sticker-rules-acked";
+const rulesBanner = $("rules-banner");
+const rulesAck = $("rules-ack");
+function refreshRulesGate() {
+  const acked = rulesAck.checked;
+  rulesBanner.classList.toggle("acked", acked);
+  dropZone.classList.toggle("locked", !acked);
+  gridDropZone.classList.toggle("locked", !acked);
+  if (acked) localStorage.setItem(RULES_ACK_KEY, "1");
+  else localStorage.removeItem(RULES_ACK_KEY);
+}
+rulesAck.checked = localStorage.getItem(RULES_ACK_KEY) === "1";
+rulesAck.addEventListener("change", refreshRulesGate);
+refreshRulesGate();
 (async () => {
   // Handle redirect-back from LINE OAuth (if URL has ?code=...).
   await handleOAuthCallback();
