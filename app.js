@@ -983,51 +983,121 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground) {
     od[i + 2] = Math.max(0, Math.min(255, b));
   }
 
-  // 6. Die-cut white outline — standard LINE sticker convention. Take
-  // the current alpha mask, dilate by OUTLINE_PX, then fill the new
-  // halo zone with PURE WHITE so the sticker pops on any chat bg.
-  //
-  // Done AFTER decontamination so we layer a clean opaque white over
-  // any residual edge contamination.
+  // 6. Die-cut white outline + 2px soft outer feather — standard LINE
+  //    sticker convention. The 7px solid outline pops on any chat bg;
+  //    the 2px feather softens the outer edge so it doesn't look like
+  //    cardboard cut-out.
   const OUTLINE_PX = 7;
-  const haveAlpha = new Uint8Array(w * h);
+  const FEATHER_PX = 2;
+  const baseAlpha = new Uint8Array(w * h);
   for (let i = 0, p = 0; i < od.length; i += 4, p++) {
-    if (od[i + 3] >= 64) haveAlpha[p] = 1; // any meaningful coverage
+    if (od[i + 3] >= 64) baseAlpha[p] = 1;
   }
-  // Separable dilation: horizontal then vertical pass.
-  const halfH = new Uint8Array(w * h);
+  const dil7 = dilateMask(baseAlpha, w, h, OUTLINE_PX);
+  const dil8 = dilateMask(baseAlpha, w, h, OUTLINE_PX + 1);
+  const dil9 = dilateMask(baseAlpha, w, h, OUTLINE_PX + FEATHER_PX);
+  for (let i = 0, p = 0; i < od.length; i += 4, p++) {
+    if (baseAlpha[p]) continue;
+    if (dil7[p]) {
+      od[i] = 255; od[i + 1] = 255; od[i + 2] = 255; od[i + 3] = 255;
+    } else if (dil8[p]) {
+      od[i] = 255; od[i + 1] = 255; od[i + 2] = 255; od[i + 3] = 180;
+    } else if (dil9[p]) {
+      od[i] = 255; od[i + 1] = 255; od[i + 2] = 255; od[i + 3] = 100;
+    }
+  }
+
+  // 7. Soft drop shadow — 2-3px offset down-right, 2px blur, ~70 α.
+  //    Gives the sticker a subtle "lifted off the page" feel.
+  //    Source = current alpha (silhouette + outline + feather).
+  //    Place ONLY where current pixel is fully transparent (don't dim
+  //    the outline or character).
+  const SHADOW_OFFSET_X = 2;
+  const SHADOW_OFFSET_Y = 3;
+  const SHADOW_BLUR = 2;
+  const SHADOW_MAX_ALPHA = 70;
+  const currentAlpha = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < od.length; i += 4, p++) currentAlpha[p] = od[i + 3];
+  const blurredShadowSrc = blurMask(currentAlpha, w, h, SHADOW_BLUR);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      let on = 0;
-      for (let dx = -OUTLINE_PX; dx <= OUTLINE_PX; dx++) {
-        const nx = x + dx;
-        if (nx < 0 || nx >= w) continue;
-        if (haveAlpha[y * w + nx]) { on = 1; break; }
+      const p = y * w + x;
+      if (od[p * 4 + 3] !== 0) continue; // skip non-empty pixels
+      const sx = x - SHADOW_OFFSET_X;
+      const sy = y - SHADOW_OFFSET_Y;
+      if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+      const intensity = blurredShadowSrc[sy * w + sx] / 255;
+      const shadowAlpha = Math.round(intensity * SHADOW_MAX_ALPHA);
+      if (shadowAlpha > 4) {
+        od[p * 4] = 0; od[p * 4 + 1] = 0; od[p * 4 + 2] = 0;
+        od[p * 4 + 3] = shadowAlpha;
       }
-      halfH[y * w + x] = on;
-    }
-  }
-  const dilatedHalo = new Uint8Array(w * h);
-  for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) {
-      let on = 0;
-      for (let dy = -OUTLINE_PX; dy <= OUTLINE_PX; dy++) {
-        const ny = y + dy;
-        if (ny < 0 || ny >= h) continue;
-        if (halfH[ny * w + x]) { on = 1; break; }
-      }
-      dilatedHalo[y * w + x] = on;
-    }
-  }
-  // Fill the halo zone (in dilation, NOT in original) with pure white.
-  for (let i = 0, p = 0; i < od.length; i += 4, p++) {
-    if (dilatedHalo[p] && !haveAlpha[p]) {
-      od[i] = 255; od[i + 1] = 255; od[i + 2] = 255;
-      od[i + 3] = 255;
     }
   }
 
   outCtx.putImageData(outData, 0, 0);
+  return out;
+}
+
+// Separable binary dilation by `radius` (Manhattan-ish, treats edges as
+// off). O(w·h·radius) instead of O(w·h·radius²) of naive 2D.
+function dilateMask(mask, w, h, radius) {
+  const halfH = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let on = 0;
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= w) continue;
+        if (mask[y * w + nx]) { on = 1; break; }
+      }
+      halfH[y * w + x] = on;
+    }
+  }
+  const out = new Uint8Array(w * h);
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      let on = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        if (halfH[ny * w + x]) { on = 1; break; }
+      }
+      out[y * w + x] = on;
+    }
+  }
+  return out;
+}
+
+// Separable box blur on a single-channel mask. O(w·h·radius). Returns
+// a Uint8Array same shape as input with averaged values.
+function blurMask(mask, w, h, radius) {
+  const halfH = new Uint8ClampedArray(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let sum = 0, n = 0;
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        if (nx < 0 || nx >= w) continue;
+        sum += mask[y * w + nx];
+        n++;
+      }
+      halfH[y * w + x] = sum / n;
+    }
+  }
+  const out = new Uint8ClampedArray(w * h);
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      let sum = 0, n = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        sum += halfH[ny * w + x];
+        n++;
+      }
+      out[y * w + x] = sum / n;
+    }
+  }
   return out;
 }
 
