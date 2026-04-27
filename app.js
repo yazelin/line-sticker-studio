@@ -913,6 +913,15 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
   const origData = origCtx.getImageData(0, 0, w, h);
   const orig = origData.data;
 
+  // Auto-detect bg type: GREEN chroma-key (new Gemini prompt) vs WHITE
+  // (legacy Gemini output, BYOG uploads with white bg). Sample 4 corners.
+  const bgType = detectBgType(orig, w, h);
+  if (bgType === "green") {
+    return chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle);
+  }
+  // else: fall through to ISNet-based Approach D for white bg
+
+
   // 1. Run @imgly bg removal FIRST so we can use its mask to tell apart
   //    "character dark stuff (hair, eyes)" from "text strokes":
   //      character dark = dark in orig AND kept by @imgly  → trust @imgly
@@ -983,12 +992,77 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
     od[i + 2] = Math.max(0, Math.min(255, b));
   }
 
-  // 6. Die-cut white outline + 2px soft outer feather — common (not
-  //    universal) LINE convention. Skipped entirely when style="none".
-  if (outlineStyle === "none") {
-    outCtx.putImageData(outData, 0, 0);
-    return out;
+  // 6+7. Outline + drop shadow handled by shared helper.
+  outCtx.putImageData(outData, 0, 0);
+  return applyOutlineAndShadow(out, w, h, outlineStyle);
+}
+
+// Detect background type by sampling 4 corner pixels. Returns "green"
+// if majority are very-saturated-green (chroma-key plate), else "white".
+function detectBgType(orig, w, h) {
+  const samples = [
+    [0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1],
+  ];
+  let greenCount = 0;
+  for (const [x, y] of samples) {
+    const i = (y * w + x) * 4;
+    const r = orig[i], g = orig[i + 1], b = orig[i + 2];
+    // Pure neon green has G high, R+B low. Allow some Gemini drift.
+    if (g > 180 && r < 130 && b < 130 && (g - Math.max(r, b)) > 60) {
+      greenCount++;
+    }
   }
+  return greenCount >= 3 ? "green" : "white";
+}
+
+// Chroma-key out a green (#00FF00) background with anti-alias decontamination.
+// Per-pixel "green-ness" score → linear ramp to alpha.
+// Then subtract green contribution from semi-transparent edge pixels.
+async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
+  const out = document.createElement("canvas");
+  out.width = w; out.height = h;
+  const outCtx = out.getContext("2d");
+  const outData = outCtx.createImageData(w, h);
+  const od = outData.data;
+
+  for (let i = 0; i < orig.length; i += 4) {
+    const r = orig[i], g = orig[i + 1], b = orig[i + 2];
+    // "Green excess" = how much greener than red/blue. Pure green = 255-ish,
+    // pure non-green = 0 or negative.
+    const maxRB = Math.max(r, b);
+    const greenExcess = g - maxRB;
+    let alpha;
+    if (greenExcess >= 100) {
+      alpha = 0;             // very green — bg
+    } else if (greenExcess <= 20) {
+      alpha = 255;           // not green — fg
+    } else {
+      // Linear ramp 100→0 to 20→255
+      alpha = Math.round(255 * (100 - greenExcess) / 80);
+    }
+    od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
+
+    // Decontamination — subtract green influence from edge pixels.
+    if (alpha > 5 && alpha < 250) {
+      const a = alpha / 255;
+      const inv = 1 - a;
+      // bg color = (0, 255, 0); fg = (composite - inv*bg) / a
+      od[i]     = Math.max(0, Math.min(255, (r - inv * 0)   / a));
+      od[i + 1] = Math.max(0, Math.min(255, (g - inv * 255) / a));
+      od[i + 2] = Math.max(0, Math.min(255, (b - inv * 0)   / a));
+    }
+  }
+  outCtx.putImageData(outData, 0, 0);
+  return applyOutlineAndShadow(out, w, h, outlineStyle);
+}
+
+// Apply die-cut white outline + drop shadow to a transparent-bg canvas.
+// Shared between chroma-key path and ISNet path.
+function applyOutlineAndShadow(canvas, w, h, outlineStyle) {
+  if (outlineStyle === "none") return canvas;
+  const ctx = canvas.getContext("2d");
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const od = imgData.data;
   const OUTLINE_PX = 7;
   const FEATHER_PX = outlineStyle === "fancy" ? 2 : 0;
   const baseAlpha = new Uint8Array(w * h);
@@ -1008,31 +1082,21 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
       od[i] = 255; od[i + 1] = 255; od[i + 2] = 255; od[i + 3] = 100;
     }
   }
-
-  // Plain style stops here — no drop shadow.
-  if (outlineStyle === "plain") {
-    outCtx.putImageData(outData, 0, 0);
-    return out;
+  if (outlineStyle !== "fancy") {
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
   }
-
-  // 7. Soft drop shadow — 2-3px offset down-right, 2px blur, ~70 α.
-  //    Gives the sticker a subtle "lifted off the page" feel.
-  //    Source = current alpha (silhouette + outline + feather).
-  //    Place ONLY where current pixel is fully transparent (don't dim
-  //    the outline or character).
-  const SHADOW_OFFSET_X = 2;
-  const SHADOW_OFFSET_Y = 3;
-  const SHADOW_BLUR = 2;
-  const SHADOW_MAX_ALPHA = 70;
+  // Drop shadow
+  const SHADOW_OFFSET_X = 2, SHADOW_OFFSET_Y = 3;
+  const SHADOW_BLUR = 2, SHADOW_MAX_ALPHA = 70;
   const currentAlpha = new Uint8Array(w * h);
   for (let i = 0, p = 0; i < od.length; i += 4, p++) currentAlpha[p] = od[i + 3];
   const blurredShadowSrc = blurMask(currentAlpha, w, h, SHADOW_BLUR);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const p = y * w + x;
-      if (od[p * 4 + 3] !== 0) continue; // skip non-empty pixels
-      const sx = x - SHADOW_OFFSET_X;
-      const sy = y - SHADOW_OFFSET_Y;
+      if (od[p * 4 + 3] !== 0) continue;
+      const sx = x - SHADOW_OFFSET_X, sy = y - SHADOW_OFFSET_Y;
       if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
       const intensity = blurredShadowSrc[sy * w + sx] / 255;
       const shadowAlpha = Math.round(intensity * SHADOW_MAX_ALPHA);
@@ -1042,9 +1106,8 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyl
       }
     }
   }
-
-  outCtx.putImageData(outData, 0, 0);
-  return out;
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
 }
 
 // Separable binary dilation by `radius` (Manhattan-ish, treats edges as

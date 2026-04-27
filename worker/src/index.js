@@ -352,8 +352,9 @@ CHARACTER CONSISTENCY: every tile shows the SAME identifiable character from the
 
 STICKER FRAMING (every tile):
 - Subject is the upper body or full body of the character, fully inside the cell with comfortable margin.
-- Background is plain solid PURE WHITE (#FFFFFF). No scenery, no gradients, no patterns. This makes downstream background removal trivial.
-- CHARACTER OUTLINE: trace the entire character silhouette with a clean, uniform 2-3px PURE BLACK outline (the boundary between character and the white background). Apply consistently and identically across ALL 9 cells. This gives the sticker pack a unified "die-cut sticker" look and lets downstream bg removal find the silhouette precisely. Even photo-realistic stickers should have this clean black outline added.
+- Background is plain solid PURE NEON GREEN (#00FF00) — this is a chroma-key plate that will be programmatically removed by the downstream tool. Use the brightest, most saturated, most uniform green possible. NO gradients, NO shading, NO scenery, NO patterns. Same identical green across all 9 cells.
+- CRITICAL: the character itself must contain NO GREEN elements anywhere. NO green clothes, NO green hair, NO green eyes, NO green accessories, NO green objects. If the original reference has any green, substitute it with red, orange, blue, purple, or yellow. Even slight greenish tints on white clothes or skin should be avoided. This is essential — green pixels on the character will be chroma-keyed out and become holes.
+- CHARACTER OUTLINE: trace the entire character silhouette with a clean, uniform 2-3px PURE BLACK outline (the boundary between character and the green background). Apply consistently and identically across ALL 9 cells. This gives the sticker pack a unified "die-cut sticker" look and lets downstream bg removal find the silhouette precisely. Even photo-realistic stickers should have this clean black outline added.
 - No drop shadows touching the cell edges (small soft shadow under feet OK).
 - Bold, lively poses — readable at chat-thumbnail size (~120×120 px).
 
