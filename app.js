@@ -1043,18 +1043,20 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
   let nKeyed = 0, nKept = 0, nPartial = 0;
   for (let i = 0; i < orig.length; i += 4) {
     const r = orig[i], g = orig[i + 1], b = orig[i + 2];
-    // "Green excess" = how much greener than red/blue. Pure green = 255-ish,
-    // pure non-green = 0 or negative.
-    const maxRB = Math.max(r, b);
-    const greenExcess = g - maxRB;
+    // "Greenness ratio" — how much greener than max(R,B), normalized to 0-1.
+    // Pure green = 1.0, neutral = 0, more red/blue = negative.
+    // Asian skin tones: typically negative or near-zero (R > G > B). Safe.
+    // Edge pixels with green bleed: 0.1-0.4. We aggressively kill them
+    // to avoid the green halo around the character silhouette.
+    const greenness = (g - Math.max(r, b)) / 255;
     let alpha;
-    if (greenExcess >= 100) {
-      alpha = 0;             // very green — bg
-    } else if (greenExcess <= 20) {
-      alpha = 255;           // not green — fg
+    if (greenness > 0.25) {
+      alpha = 0;              // any meaningfully green pixel → transparent
+    } else if (greenness < 0.05) {
+      alpha = 255;            // not green at all → keep
     } else {
-      // Linear ramp 100→0 to 20→255
-      alpha = Math.round(255 * (100 - greenExcess) / 80);
+      // Tight ramp: 0.25→0 to 0.05→255 (only 4-5 pixels of soft edge)
+      alpha = Math.round(255 * (0.25 - greenness) / 0.20);
     }
     od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
     if (alpha === 0) nKeyed++;
