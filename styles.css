@@ -200,6 +200,19 @@ header h1 {
   line-height: 1.55;
 }
 
+.howto-byog-hint {
+  max-width: 640px;
+  margin: 0.85rem auto 0;
+  padding: 0.55rem 0.85rem;
+  background: #fff7e8;
+  border: 1px dashed #e4bf7a;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.6;
+}
+.howto-byog-hint strong { color: #a3731b; }
+
 .howto-badge {
   display: inline-flex;
   align-items: center;

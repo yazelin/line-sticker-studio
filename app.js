@@ -289,7 +289,6 @@ async function handleFile(file) {
   dropZone.hidden = true;
   sourcePreview.hidden = false;
   $("step-config").hidden = false;
-  $("step-byog").hidden = false;
   refreshEstimate();
   // Lazy-load campaigns the first time step-config opens.
   ensureCampaignsLoaded().then(renderCampaignPicker);
@@ -305,7 +304,6 @@ function resetAll() {
   sourcePreview.hidden = true;
   dropZone.hidden = false;
   $("step-config").hidden = true;
-  $("step-byog").hidden = true;
   $("step-preview").hidden = true;
   $("step-download").hidden = true;
   $("gen-progress").hidden = true;
