@@ -1097,7 +1097,63 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
   console.log(`[chroma-key] eroded ${nEroded} fringe pixels`);
 
   outCtx.putImageData(outData, 0, 0);
-  return applyOutlineAndShadow(out, w, h, outlineStyle);
+  const decorated = applyOutlineAndShadow(out, w, h, outlineStyle);
+  // LINE Creators Market spec: "剪裁後的圖片與貼圖圖案之間必須有一定程度
+  // （10px 左右）的留白" — find character bbox, scale-down + center if
+  // any side has < 10px clearance.
+  return fitWithPadding(decorated, 10);
+}
+
+// Find the character's bounding box (any pixel with alpha > 32) then
+// re-render scaled-down + centered with `padding` px clearance on every
+// side. Required by LINE 規格.
+function fitWithPadding(canvas, padding) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const ctx = canvas.getContext("2d");
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 32) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) return canvas;
+
+  const bboxW = maxX - minX + 1;
+  const bboxH = maxY - minY + 1;
+  // Already inside spec? leave alone.
+  if (
+    minX >= padding && minY >= padding &&
+    (w - 1 - maxX) >= padding && (h - 1 - maxY) >= padding
+  ) {
+    return canvas;
+  }
+  const scale = Math.min(
+    (w - 2 * padding) / bboxW,
+    (h - 2 * padding) / bboxH,
+    1,
+  );
+  const newW = bboxW * scale;
+  const newH = bboxH * scale;
+  const dx = (w - newW) / 2;
+  const dy = (h - newH) / 2;
+
+  const out = document.createElement("canvas");
+  out.width = w; out.height = h;
+  out.getContext("2d").drawImage(
+    canvas, minX, minY, bboxW, bboxH, dx, dy, newW, newH,
+  );
+  console.log(
+    `[fit] bbox=${bboxW}×${bboxH} → scale ${scale.toFixed(2)} → ${padding}px margin`,
+  );
+  return out;
 }
 
 // Apply die-cut white outline + drop shadow to a transparent-bg canvas.
