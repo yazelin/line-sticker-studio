@@ -588,8 +588,11 @@ async function splitGrid(img) {
       tileCanvas.width = STICKER_W;
       tileCanvas.height = STICKER_H;
       const tctx = tileCanvas.getContext("2d");
-      // Fill white in case Gemini left some near-white pixels.
-      tctx.fillStyle = "#ffffff";
+      // Fill with PURE GREEN (#00FF00) so chroma-key downstream removes
+      // the unfilled padding (left/right 25px when contain-fitting a
+      // square cell into landscape 370×320). Was: white — which chroma
+      // key didn't recognize → showed up as opaque white bars.
+      tctx.fillStyle = "#00FF00";
       tctx.fillRect(0, 0, STICKER_W, STICKER_H);
 
       // Crop with inset on each side, then contain-fit the cropped
