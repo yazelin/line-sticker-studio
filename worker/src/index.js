@@ -18,6 +18,12 @@ const DAILY_LIMIT = 3;
 // accepted. Leave empty to accept tokens from any LINE Login channel.
 const EXPECTED_LINE_CHANNEL_ID = "2009916047";
 
+// LINE userIds who can use POST /admin/reset-quota to nuke their own
+// daily quota. Add more by appending to this array.
+const ADMIN_LINE_USER_IDS = [
+  "Ue9388ac5ea91bba25f76e1bd6ea766d3", // yazelin
+];
+
 // Default Traditional-Chinese short phrases commonly used on LINE.
 // Frontend can override with its own phrase list. We keep ~50 here so
 // frontend can pick 9 random ones per request without dupes.
@@ -493,14 +499,18 @@ export default {
         return json({ campaigns: campaignsManifest() }, 200, cors);
       }
       if (url.pathname === "/me") {
-        // Returns the current LINE user + quota. Requires Bearer token.
+        // Returns the current LINE user + quota + isAdmin flag.
         const token = getBearerToken(request);
         const user = await getLineUser(token);
         if (!user) {
           return json({ error: "auth required or invalid LINE token" }, 401, cors);
         }
         const quota = await readQuota(env, user.userId);
-        return json({ user, quota, lineChannelId: EXPECTED_LINE_CHANNEL_ID }, 200, cors);
+        const isAdmin = ADMIN_LINE_USER_IDS.includes(user.userId);
+        return json(
+          { user, quota, lineChannelId: EXPECTED_LINE_CHANNEL_ID, isAdmin },
+          200, cors,
+        );
       }
       if (url.pathname === "/config") {
         // Public — frontend uses this to render the LINE Login button
@@ -515,6 +525,24 @@ export default {
 
     if (request.method !== "POST") {
       return json({ error: "method not allowed" }, 405, cors);
+    }
+
+    // POST /admin/reset-quota — nuke the current user's daily quota.
+    // Requires Bearer token AND user must be in ADMIN_LINE_USER_IDS.
+    if (url.pathname === "/admin/reset-quota") {
+      const token = getBearerToken(request);
+      const user = await getLineUser(token);
+      if (!user) return json({ error: "auth required" }, 401, cors);
+      if (!ADMIN_LINE_USER_IDS.includes(user.userId)) {
+        return json({ error: "forbidden — not an admin" }, 403, cors);
+      }
+      if (env.QUOTA) {
+        await env.QUOTA.delete(quotaKey(user.userId));
+      }
+      return json(
+        { ok: true, message: "Quota reset to 0", userId: user.userId },
+        200, cors,
+      );
     }
 
     // POST /prompt — returns the assembled prompt without calling Gemini.

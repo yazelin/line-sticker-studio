@@ -56,6 +56,7 @@ const auth = {
   user: null,        // { userId, displayName, pictureUrl } when logged in
   quota: null,       // { used, limit }
   token: null,       // LINE access_token
+  isAdmin: false,    // from /me — gates the admin reset button
 };
 
 function getStoredToken() {
@@ -67,6 +68,7 @@ function clearAuth() {
   auth.user = null;
   auth.quota = null;
   auth.token = null;
+  auth.isAdmin = false;
 }
 
 function genVerifier() {
@@ -187,6 +189,7 @@ async function refreshAuth() {
     const data = await resp.json();
     auth.user = data.user;
     auth.quota = data.quota;
+    auth.isAdmin = !!data.isAdmin;
   } catch (err) {
     console.warn("refreshAuth failed:", err);
     // Don't clear token on transient network errors — only on 401.
@@ -1722,12 +1725,32 @@ const authAvatar = $("auth-avatar");
 const authName = $("auth-name");
 const authQuotaEl = $("auth-quota");
 const authLogoutBtn = $("auth-logout-btn");
+const authAdminResetBtn = $("auth-admin-reset-btn");
 
 authLoginBtn.addEventListener("click", () => startLineLogin());
 authLogoutBtn.addEventListener("click", () => {
   if (!confirm("登出 LINE? 之後 AI 生成需要重新登入。")) return;
   clearAuth();
   refreshAuthUi();
+});
+authAdminResetBtn.addEventListener("click", async () => {
+  if (!auth.token) return;
+  const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+  authAdminResetBtn.disabled = true;
+  try {
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/admin/reset-quota", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+    await refreshAuth();
+    refreshAuthUi();
+    authAdminResetBtn.title = `重設成功！剩餘 ${auth.quota?.limit || 3}/${auth.quota?.limit || 3}`;
+  } catch (err) {
+    alert(`重設失敗：${err.message}`);
+  } finally {
+    authAdminResetBtn.disabled = false;
+  }
 });
 
 function refreshAuthUi() {
@@ -1744,9 +1767,11 @@ function refreshAuthUi() {
     } else {
       authQuotaEl.textContent = "";
     }
+    authAdminResetBtn.hidden = !auth.isAdmin;
   } else {
     authLoginBtn.hidden = false;
     authUserBox.hidden = true;
+    authAdminResetBtn.hidden = true;
   }
 }
 

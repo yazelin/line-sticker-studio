@@ -116,6 +116,23 @@ html, body {
 }
 .auth-logout:hover { color: var(--text); }
 
+.auth-admin-reset {
+  background: #fff7e8;
+  border: 1px solid #f3d38a;
+  color: #6e4c10;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease;
+}
+.auth-admin-reset:hover { transform: scale(1.15); background: #ffe2a3; }
+
 .flash-highlight {
   animation: flashHl 1.5s ease;
 }
