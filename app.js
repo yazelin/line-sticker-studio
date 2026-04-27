@@ -796,43 +796,23 @@ const bgProgressText = $("bg-progress-text");
 bgRemoveBtn.addEventListener("click", removeAllBackgrounds);
 bgRestoreBtn.addEventListener("click", restoreAllBackgrounds);
 
-async function ensureBgLib() {
-  if (state.removeBackgroundFn) return state.removeBackgroundFn;
-  setBgProgress(5, "首次需要下載 ~30MB 去背模型，之後會用瀏覽器快取…");
-  // @imgly/background-removal — runs onnxruntime-web in browser. Cached
-  // by the browser after first load.
-  const mod = await import(
-    "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.6.0/+esm"
-  );
-  state.removeBackgroundFn = mod.removeBackground || mod.default?.removeBackground;
-  if (!state.removeBackgroundFn) {
-    throw new Error("無法載入 @imgly/background-removal");
-  }
-  return state.removeBackgroundFn;
-}
+// (Previously ensureBgLib loaded @imgly's ISNet model for white-bg
+// fallback. Removed — chroma-key on green is the only path now. No
+// 30MB ML model download, no white-shirt-eaten edge cases. If user
+// uploads a non-green BYOG grid, we tell them clearly.)
 
 async function removeAllBackgrounds() {
   if (state.tiles.length === 0) return;
   bgRemoveBtn.disabled = true;
   bgProgress.hidden = false;
 
-  let removeBackground;
   try {
-    removeBackground = await ensureBgLib();
-  } catch (err) {
-    setBgProgress(0, `載入失敗：${err.message}`);
-    bgRemoveBtn.disabled = false;
-    return;
-  }
-
-  try {
+    let nonGreenTiles = 0;
     for (let i = 0; i < state.tiles.length; i++) {
       const tile = state.tiles[i];
-      // ALWAYS run on the saved original (so re-running with a different
-      // outline style works correctly, and "restore + re-bg-remove" gives
-      // a clean result instead of layering on top of a previous run).
+      // Snapshot pristine canvas on first pass so "restore" + re-runs
+      // always start from the original Gemini output.
       if (!tile.originalCanvas) {
-        // First time — snapshot the pristine Gemini-cropped canvas.
         const snap = document.createElement("canvas");
         snap.width = tile.canvas.width;
         snap.height = tile.canvas.height;
@@ -843,19 +823,30 @@ async function removeAllBackgrounds() {
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
-      const outlineStyle = $("outline-style")?.value || "fancy";
-      const c = await bgRemoveWithTextPreserve(
-        tile.originalCanvas,
-        removeBackground,
-        outlineStyle,
-      );
-      tile.canvas = c;
+      const result = await bgRemoveWithTextPreserve(tile.originalCanvas);
+      if (result === null) {
+        nonGreenTiles++;
+        continue; // leave tile as-is
+      }
+      tile.canvas = result;
       tile.transparent = true;
       renderTileIntoCell(i, tile);
     }
-    state.bgRemoved = true;
-    setBgProgress(100, `完成！${state.tiles.length} 張已去背。`);
-    bgRestoreBtn.hidden = false;
+    if (nonGreenTiles > 0 && nonGreenTiles === state.tiles.length) {
+      setBgProgress(0,
+        `❌ ${nonGreenTiles} 張全部不是綠底 — 無法自動去背。請走 🅰 AI 路徑（會自動畫綠底），或先用其他工具把你的 3×3 圖去背成透明 PNG 再上傳。`,
+      );
+    } else if (nonGreenTiles > 0) {
+      state.bgRemoved = true;
+      setBgProgress(100,
+        `完成！${state.tiles.length - nonGreenTiles} 張已去背、${nonGreenTiles} 張不是綠底（保留原樣）。`,
+      );
+      bgRestoreBtn.hidden = false;
+    } else {
+      state.bgRemoved = true;
+      setBgProgress(100, `完成！${state.tiles.length} 張已去背。`);
+      bgRestoreBtn.hidden = false;
+    }
   } catch (err) {
     console.error(err);
     setBgProgress(0, `去背失敗：${err.message}`);
@@ -907,22 +898,31 @@ function setBgProgress(pct, text) {
 // Result: Gemini's exact text (including stylized strokes, white halo,
 // any tear-drop integration) is preserved; only the truly empty white
 // card area becomes transparent. No more double text, no more ghosting.
-async function bgRemoveWithTextPreserve(srcCanvas, removeBackground, outlineStyle = "fancy") {
+// Returns a transparent canvas if the source has a green bg; returns
+// null if not green (caller should skip / show a message).
+// Outline / shadow post-process removed — Gemini draws black character
+// outline directly per the prompt, no client-side decoration needed.
+async function bgRemoveWithTextPreserve(srcCanvas) {
   const w = srcCanvas.width;
   const h = srcCanvas.height;
-
-  // Read original pixels.
   const origCtx = srcCanvas.getContext("2d");
   const origData = origCtx.getImageData(0, 0, w, h);
   const orig = origData.data;
 
-  // Auto-detect bg type: GREEN chroma-key (new Gemini prompt) vs WHITE
-  // (legacy Gemini output, BYOG uploads with white bg). Sample 4 corners.
-  const bgType = detectBgType(orig, w, h);
-  if (bgType === "green") {
-    return chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle);
+  if (detectBgType(orig, w, h) === "green") {
+    return chromaKeyGreen(srcCanvas, w, h, orig, "none");
   }
-  // else: fall through to ISNet-based Approach D for white bg
+  return null;
+}
+
+// Legacy ISNet path retained for reference; never called now.
+// eslint-disable-next-line
+async function _legacyIsnetPath(srcCanvas, removeBackground, outlineStyle) {
+  const w = srcCanvas.width;
+  const h = srcCanvas.height;
+  const origCtx = srcCanvas.getContext("2d");
+  const origData = origCtx.getImageData(0, 0, w, h);
+  const orig = origData.data;
 
 
   // 1. Run @imgly bg removal FIRST so we can use its mask to tell apart
