@@ -288,10 +288,7 @@ async function handleFile(file) {
   sourceImg.src = img.src;
   dropZone.hidden = true;
   sourcePreview.hidden = false;
-  $("step-config").hidden = false;
   refreshEstimate();
-  // Lazy-load campaigns the first time step-config opens.
-  ensureCampaignsLoaded().then(renderCampaignPicker);
   $("step-config").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -303,7 +300,6 @@ function resetAll() {
   fileInput.value = "";
   sourcePreview.hidden = true;
   dropZone.hidden = false;
-  $("step-config").hidden = true;
   $("step-preview").hidden = true;
   $("step-download").hidden = true;
   $("gen-progress").hidden = true;
@@ -542,9 +538,6 @@ async function handleGridUpload(file) {
   state.bgRemoved = false;
   $("bg-restore-btn").hidden = true;
   document.body.classList.add("byog-mode");
-
-  // Hide AI-only step-config (style/phrases controls); they don't apply.
-  $("step-config").hidden = true;
 
   $("step-preview").hidden = false;
   const grid = $("stickers-grid");
@@ -1301,6 +1294,9 @@ function refreshAuthUi() {
 
 refreshEstimate();
 refreshSlotStatus();
+// step-config is always visible now (so BYOG users can use settings dialog
+// to copy prompt for Gemini), so eager-load campaigns at boot.
+ensureCampaignsLoaded().then(renderCampaignPicker);
 (async () => {
   // Handle redirect-back from LINE OAuth (if URL has ?code=...).
   await handleOAuthCallback();
