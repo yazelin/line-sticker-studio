@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="上傳一張圖，AI 自動產出整組 LINE 貼圖（370×320 透明 PNG），下載 ZIP 後可直接到 LINE Creators Market 上架。" />
+
+<meta property="og:type" content="website" />
+<meta property="og:title" content="LINE 貼圖製造機｜LINE Sticker Studio" />
+<meta property="og:description" content="一張圖變一整組 LINE 貼圖，下載 ZIP 直接上架。" />
+<meta property="og:locale" content="zh_TW" />
+
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#06c755" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="LINE 貼圖製造機" />
+
+<svg style="display:none" aria-hidden="true">
+  <defs>
+    <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+    </symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>
+    </symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 12a9 9 0 0 1 15.5-6.4L21 8"/><path d="M21 3v5h-5"/>
+      <path d="M21 12a9 9 0 0 1-15.5 6.4L3 16"/><path d="M3 21v-5h5"/>
+    </symbol>
+    <symbol id="i-zip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+      <path d="M14 3v6h6"/>
+      <path d="M10 12h2v2h-2zM10 16h2v2h-2z"/>
+    </symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="6" cy="6" r="3"/>
+      <circle cx="6" cy="18" r="3"/>
+      <line x1="20" y1="4" x2="8.12" y2="15.88"/>
+      <line x1="14.47" y1="14.48" x2="20" y2="20"/>
+      <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 12l5 5 11-11"/>
+    </symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 10h12a3 3 0 0 1 0 6h-2"/>
+      <path d="M4 10v6a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4v-6H4z"/>
+      <path d="M7 3c0 1.5-1 1.5-1 3M11 3c0 1.5-1 1.5-1 3M15 3c0 1.5-1 1.5-1 3"/>
+    </symbol>
+  </defs>
+</svg>
+<title>LINE 貼圖製造機｜LINE Sticker Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=M+PLUS+Rounded+1c:wght@500;700;900&display=swap" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="auth-widget" class="auth-widget" hidden>
+  <button id="auth-login-btn" class="auth-login" hidden>
+    <svg class="btn-icon"><use href="#i-sparkle"/></svg>
+    用 LINE 登入解鎖 AI 生成
+  </button>
+  <div id="auth-user" class="auth-user" hidden>
+    <img id="auth-avatar" alt="" />
+    <div class="auth-info">
+      <div class="auth-name" id="auth-name"></div>
+      <div class="auth-quota" id="auth-quota"></div>
+    </div>
+    <button id="auth-logout-btn" class="auth-logout" title="登出">登出</button>
+  </div>
+</div>
+<header>
+  <h1>
+    <span class="brand-mark">LINE</span>
+    貼圖製造機
+  </h1>
+  <p class="tagline">上傳一張角色圖 → AI 產一整組貼圖 → 下載 ZIP 直接上架到 LINE Creators Market</p>
+
+  <div class="howto">
+    <div class="howto-step">
+      <span class="howto-badge">①</span>
+      <div>
+        <strong>上傳一張角色圖</strong>
+        <span>自拍、Q 版頭像、手繪角色都可以</span>
+      </div>
+    </div>
+    <div class="howto-step">
+      <span class="howto-badge">②</span>
+      <div>
+        <strong>AI 一次產 8 張貼圖</strong>
+        <span>1 次 API 呼叫、約 50 秒，同角色 8 種不同姿勢/表情</span>
+      </div>
+    </div>
+    <div class="howto-step">
+      <span class="howto-badge">③</span>
+      <div>
+        <strong>去背 + 下載 ZIP</strong>
+        <span>瀏覽器內去背（資料不上傳），輸出 LINE 規格 PNG</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="card" id="step-upload">
+    <h2>① 上傳一張角色圖</h2>
+    <p class="hint">建議：主體清楚、單純背景的正方形圖。AI 會學起來、一次產 8 張同角色不同姿勢/表情的貼圖（LINE 規定的最小套組）。</p>
+    <p class="hint coffee-hint">
+      <svg class="inline-icon"><use href="#i-coffee"/></svg>
+      AI 圖像生成由作者付費呼叫 Gemini — 玩得開心請
+      <a href="https://buymeacoffee.com/yazelin" target="_blank" rel="noopener">請我喝杯咖啡</a>。
+    </p>
+
+    <label class="upload-box" id="drop-zone">
+      <input type="file" id="file-input" accept="image/*" hidden />
+      <svg class="upload-icon"><use href="#i-upload"/></svg>
+      <span>點擊或拖曳圖片到這裡</span>
+    </label>
+
+    <div id="source-preview" hidden>
+      <img id="source-img" alt="原圖預覽" />
+      <button class="ghost" id="clear-btn">
+        <svg class="btn-icon"><use href="#i-refresh"/></svg>
+        換一張
+      </button>
+    </div>
+  </section>
+
+  <section class="card" id="step-byog" hidden>
+    <h2>① 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）</h2>
+    <p class="hint">已經自己用 Gemini / ChatGPT 跑出 3×3 圖了？直接傳這裡，跳過 AI 步驟。</p>
+
+    <details class="tip-box">
+      <summary><strong>怎麼自己產 3×3 圖？</strong>（點開看做法）</summary>
+      <div class="tip-body">
+        <ol>
+          <li>到上面「② 選樣式 + 短語」設定好你要的活動 / 風格 / 短語</li>
+          <li>點「自訂 8 格 → 複製 prompt 到 Gemini」拿到一段 prompt</li>
+          <li>到 <a href="https://gemini.google.com" target="_blank" rel="noopener">gemini.google.com</a>（或其他 AI 圖像工具），附上你的角色圖、貼那段 prompt</li>
+          <li>等 Gemini 產出一張 3×3 圖、下載</li>
+          <li>回來這裡丟到下面那個上傳框，我們會自動切成 8 張 LINE 規格貼圖、打包 ZIP</li>
+        </ol>
+      </div>
+    </details>
+
+    <label class="upload-box compact" id="grid-drop-zone">
+      <input type="file" id="grid-file-input" accept="image/*" hidden />
+      <svg class="upload-icon"><use href="#i-upload"/></svg>
+      <span>點擊或拖曳「3×3 圖」到這裡</span>
+    </label>
+  </section>
+
+  <section class="card" id="step-config" hidden>
+    <h2>② 選樣式 + 短語</h2>
+
+    <p class="hint">本工具固定產出 LINE 接受的最小套組「<strong>8 張</strong>」，1 次 AI 呼叫就完成（約 50 秒、~USD 0.04）。要更多張請複製 prompt 自己跑。</p>
+
+    <div class="campaign-picker">
+      <div class="campaign-picker-head">
+        🎯 對準 LINE Creators Market 特輯活動（讓貼圖能投稿）
+        <button type="button" class="link-btn" id="campaign-toggle">展開</button>
+      </div>
+      <div class="campaign-list" id="campaign-list" hidden>
+        <p class="hint mini">挑一個活動，AI 會自動套用該活動所需的風格/規則；產 ZIP 會附上對應投稿說明。</p>
+        <!-- cards injected by JS -->
+      </div>
+      <div class="campaign-active" id="campaign-active" hidden></div>
+    </div>
+
+    <div class="field-row">
+      <label class="field">
+        畫風
+        <select id="style-hint">
+          <option value="match" selected>跟原圖風格一致</option>
+          <option value="cute_chibi">Q 版可愛</option>
+          <option value="bold_outline">粗線條卡通</option>
+          <option value="watercolor">水彩</option>
+          <option value="pixel">像素藝術</option>
+          <option value="meme_template">梗圖風格（Impact 字、誇張反應）</option>
+          <option value="hand_drawn">隨手亂塗（廢文梗圖）</option>
+        </select>
+      </label>
+
+      <label class="field">
+        貼圖上要不要印中文字
+        <select id="with-text">
+          <option value="true" selected>要印（AI 把字寫上去）</option>
+          <option value="false">不要（純圖貼圖）</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="slot-status" id="slot-status">
+      <span class="slot-status-text" id="slot-status-text">🎲 目前：8 格短語全隨機（從內建 50 句抽）</span>
+      <button type="button" class="link-btn" id="open-settings-link">自訂 8 格</button>
+    </div>
+
+    <div class="estimate" id="estimate"></div>
+
+    <button class="primary" id="generate-btn">
+      <svg class="btn-icon"><use href="#i-sparkle"/></svg>
+      開始生成貼圖
+    </button>
+
+    <div id="gen-progress" hidden>
+      <div class="bar"><div class="bar-fill" id="gen-bar-fill"></div></div>
+      <span id="gen-progress-text">準備中…</span>
+    </div>
+  </section>
+
+  <dialog id="settings-dialog">
+    <form method="dialog">
+      <h3>自訂 8 格短語</h3>
+      <p class="hint">每格挑一個內建短語、自己打一句、或留「隨機」讓 AI 從 50 句裡抽。<br>
+        💡 自訂格可填中文 / 英文 / 日文 / 梗圖台詞 / emoji，最多 30 字 — 風格選「梗圖」或「廢文」會更搭。</p>
+      <div class="slot-grid" id="slot-grid"></div>
+      <p class="hint" id="slots-copy-status" hidden></p>
+      <menu>
+        <button value="cancel" class="ghost">取消</button>
+        <button type="button" class="ghost" id="slots-reset">全部重設</button>
+        <button type="button" class="ghost" id="slots-copy-prompt">
+          <svg class="btn-icon"><use href="#i-check"/></svg>
+          複製 prompt 到 Gemini
+        </button>
+        <button value="save" class="primary" id="slots-save">儲存</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <section class="card" id="step-preview" hidden>
+    <h2>③ 預覽 + 去背</h2>
+    <p class="hint">點任一張可以重抽（仍會耗 API 呼叫）。LINE 上架需要透明背景，按下面按鈕在你的瀏覽器內跑去背模型，圖片不會上傳到任何伺服器。</p>
+
+    <div class="preview-actions">
+      <button class="primary" id="bg-remove-btn">
+        <svg class="btn-icon"><use href="#i-scissors"/></svg>
+        全部去背（瀏覽器內 AI）
+      </button>
+      <button class="ghost" id="bg-restore-btn" hidden>
+        <svg class="btn-icon"><use href="#i-refresh"/></svg>
+        還原白底
+      </button>
+    </div>
+
+    <div id="bg-progress" hidden>
+      <div class="bar"><div class="bar-fill" id="bg-bar-fill"></div></div>
+      <span id="bg-progress-text">載入去背模型…</span>
+    </div>
+
+    <div class="stickers-grid" id="stickers-grid"></div>
+  </section>
+
+  <section class="card" id="step-download" hidden>
+    <h2>④ 下載 + 上架</h2>
+
+    <button class="primary big" id="download-zip-btn">
+      <svg class="btn-icon"><use href="#i-zip"/></svg>
+      下載完整 ZIP（含全部貼圖 + main + tab + 說明）
+    </button>
+
+    <details class="tip-box" open>
+      <summary><strong>上架到 LINE Creators Market 完整步驟</strong></summary>
+      <div class="tip-body">
+        <p><strong>① 註冊 / 登入 Creators 帳號</strong></p>
+        <ol>
+          <li>到 <a href="https://creator.line.me/zh-hant/" target="_blank" rel="noopener">creator.line.me</a> 點右上「登入」用 LINE 帳號授權。</li>
+          <li>第一次會要填「創作者名稱」「Email」，同意條款。</li>
+        </ol>
+
+        <p><strong>② 建新貼圖</strong></p>
+        <ol>
+          <li>進「個人頁面 → 我的貼圖」，點 <strong>「新增 → Sticker（貼圖）」</strong>。</li>
+          <li>進入後分 3 個 tab 都要填：
+            <ul>
+              <li><strong>貼圖介紹</strong>（文字 metadata）— 見下面 ③</li>
+              <li><strong>貼圖管理 → 圖片編輯</strong>（檔案）— 見 ④</li>
+              <li><strong>販售資訊</strong>（價格 / 地區 / 活動 tag）— 見 ⑤</li>
+            </ul>
+          </li>
+        </ol>
+
+        <p><strong>③ 文字 metadata（手填）</strong></p>
+        <ul>
+          <li>貼圖標題：40 字內</li>
+          <li>貼圖簡介：160 字內</li>
+          <li>創作者名稱：50 字內</li>
+          <li>著作權標示（Copyright）：50 字內，<strong>限英數</strong>，例如 <code>© 2026 yourname</code></li>
+        </ul>
+
+        <p><strong>④ 上傳圖檔（兩種方法擇一）</strong></p>
+        <ul>
+          <li><strong>方法 A：整包 ZIP 拖入（推薦）</strong>
+            <br>「貼圖管理 → 圖片編輯」頁面有「<strong>上傳壓縮檔 (ZIP)</strong>」按鈕，
+            把這裡下載的 ZIP 整個拖進去，<code>main.png</code> / <code>tab.png</code> / <code>01.png</code>~<code>08.png</code>
+            會自動分配到對應欄位。我們輸出的檔名跟尺寸完全照 LINE 規格、ZIP 才幾十 KB（限制 60MB）。</li>
+          <li><strong>方法 B：一張一張上傳</strong>
+            <br>解壓後，把 <code>main.png</code> 拖到「主要圖片」欄、<code>tab.png</code> 拖到「聊天室標籤」欄、
+            <code>01.png</code>~<code>08.png</code> 依序拖到「貼圖 1」~「貼圖 8」欄。</li>
+        </ul>
+
+        <p><strong>⑤ 販售資訊</strong></p>
+        <ul>
+          <li><strong>銷售區域</strong>：選「台灣」或「全球」（建議全球曝光大）</li>
+          <li><strong>主要使用語言</strong>：繁體中文</li>
+          <li><strong>價格</strong>：靜態貼圖最低 <strong>NT$30</strong>（眼淚製造機特輯最低 NT$40、台味 NT$60 固定價）</li>
+          <li><strong>特輯活動 tag</strong>（投稿活動才需要）：在「販售資訊」最下面有「特輯活動」勾選，
+            勾你對應的活動（例如「眼淚製造機表情貼特輯」）</li>
+        </ul>
+
+        <p><strong>⑥ 送審</strong></p>
+        <ul>
+          <li>三個 tab 都填好後，點「<strong>申請販售</strong>」。</li>
+          <li>通常 <strong>1-7 天</strong>內 LINE 會回審核結果（通過 / 退件理由）。</li>
+          <li>通過後狀態變「可發售」，再點「<strong>上架</strong>」就會出現在 LINE STORE 上。</li>
+          <li>每筆銷售你拿 <strong>50%</strong>（其他扣 LINE 平台費 + 三方支付手續費）。</li>
+        </ul>
+
+        <p class="warn">⚠ <strong>常見退件原因</strong>：
+          <br>• 肖像權：用他人照片但沒授權（→ 確認你就是圖中本人，或已書面授權）
+          <br>• 商標：包含 LINE 自家、品牌、藝人、卡通角色（→ 用自己原創角色）
+          <br>• 文字過多：整片都是字（→ 我們已限制每格只 1 句、視覺為主，通常不會中）
+          <br>• 解析度 / 透明背景不符（→ 本工具已輸出標準 370×320 透明 PNG，正常不會中）
+          <br>• 重複申請：同一組貼圖反覆送（→ 退件後改完再送）
+        </p>
+      </div>
+    </details>
+  </section>
+</main>
+
+<footer>
+  <p class="footer-tools">
+    🛠 同作者其他小工具：
+    <a href="https://yazelin.github.io/emoji-slot-machine/" target="_blank" rel="noopener">表情拉霸機</a>
+  </p>
+  <p>
+    圖片只在你的瀏覽器與 Gemini 之間傳遞，作者伺服器不留存
+    · <a href="https://buymeacoffee.com/yazelin" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+  </p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+# Worker — wrangler artifacts and secrets
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars
+worker/.dev.vars.*
+worker/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local test artifacts
+/tmp/
+test-output/
+*.zip

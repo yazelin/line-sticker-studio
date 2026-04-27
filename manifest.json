@@ -1,0 +1,14 @@
+{
+  "name": "LINE 貼圖製造機 LINE Sticker Studio",
+  "short_name": "LINE 貼圖製造機",
+  "description": "上傳一張角色圖，AI 自動產出整組 LINE 貼圖 (370×320 透明 PNG)，下載 ZIP 直接上架到 LINE Creators Market。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "zh-Hant",
+  "dir": "ltr",
+  "background_color": "#f6f9f5",
+  "theme_color": "#06c755",
+  "categories": ["photo", "social", "entertainment"]
+}
