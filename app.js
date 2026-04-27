@@ -960,6 +960,29 @@ async function bgRemoveWithTextPreserve(srcCanvas, removeBackground) {
       od[i + 3] = 255;
     }
   }
+
+  // 5. Edge decontamination — remove white-bg color contamination from
+  // semi-transparent edge pixels. Without this, anti-aliased edges
+  // around the character look like a white halo on dark chat backgrounds.
+  //
+  // Math: each edge pixel is composite = α·fg + (1−α)·bg. We know
+  // composite (current pixel) and α (current alpha) and bg = white.
+  // Solve for fg: fg = (composite − (1−α)·white) / α.
+  // Apply only to edges (0 < α < 0.95), skip fully opaque & fully
+  // transparent pixels (no contamination there).
+  const BG_R = 255, BG_G = 255, BG_B = 255;
+  for (let i = 0; i < od.length; i += 4) {
+    const a = od[i + 3] / 255;
+    if (a <= 0.02 || a >= 0.95) continue;
+    const inv = 1 - a;
+    const r = (od[i]     - inv * BG_R) / a;
+    const g = (od[i + 1] - inv * BG_G) / a;
+    const b = (od[i + 2] - inv * BG_B) / a;
+    od[i]     = Math.max(0, Math.min(255, r));
+    od[i + 1] = Math.max(0, Math.min(255, g));
+    od[i + 2] = Math.max(0, Math.min(255, b));
+  }
+
   outCtx.putImageData(outData, 0, 0);
   return out;
 }
