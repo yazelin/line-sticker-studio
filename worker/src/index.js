@@ -129,13 +129,13 @@ const CAMPAIGNS = [
   },
   {
     id: "tears",
-    label: "眼淚製造機",
+    label: "眼淚製造機（表情貼專用，非貼圖）",
     fullName: "眼淚製造機表情貼特輯",
     submitTag: "眼淚製造機表情貼特輯",
     submitDeadline: "2026-06-14",
     bannerPeriod: "2026/06/22 ~ 07/05",
     articleUrl: "https://creator-mag-tw.weblog.to/archives/30606762.html",
-    blurb: "每張都要有眼淚（笑到流淚/委屈/崩潰大哭都可）。",
+    blurb: "⚠ 這個特輯只收「表情貼」(sticon) 類型，本工具產的是「貼圖」(370×320) 不適用。prompt 仍可用作哭哭主題參考。",
     forceWithText: null,
     forceStyleHint: null,
     phrasePoolOverride: [
@@ -525,6 +525,59 @@ export default {
 
     if (request.method !== "POST") {
       return json({ error: "method not allowed" }, 405, cors);
+    }
+
+    // POST /generate-themes — Gemini text model brainstorms 8 themed
+    // sticker phrases from a user description. Used by the slot dialog
+    // "✨ 用 AI 產 8 句" button to fill custom phrases at once.
+    if (url.pathname === "/generate-themes") {
+      if (!env.VERTEX_API_KEY) {
+        return json({ error: "VERTEX_API_KEY missing" }, 500, cors);
+      }
+      let body;
+      try { body = await request.json(); } catch { body = {}; }
+      const description = String(body?.description || "").trim();
+      if (!description) {
+        return json({ error: "description required" }, 400, cors);
+      }
+      const lang = String(body?.lang || "zh-TW");
+      const prompt = `你是 LINE 貼圖文案發想助手。根據使用者描述的主題，產出 8 個適合作為 LINE 貼圖文字的「短語」(每句 2-8 字)。語氣口語、聊天感、情緒鮮明、避免廣告或商標。
+
+使用者主題：「${description}」
+語言：${lang === "en" ? "English" : lang === "ja" ? "日本語" : lang === "ko" ? "한국어" : "繁體中文"}
+
+請只回 JSON 陣列、無 markdown 包裝：
+["短語1", "短語2", "短語3", "短語4", "短語5", "短語6", "短語7", "短語8"]`;
+      const apiUrl = `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent?key=${env.VERTEX_API_KEY}`;
+      const payload = {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" },
+      };
+      try {
+        const upstream = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!upstream.ok) {
+          const detail = await upstream.text();
+          return json({ error: "upstream", detail: detail.slice(0, 800) }, 502, cors);
+        }
+        const data = await upstream.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+        let phrases;
+        try { phrases = JSON.parse(text); } catch {
+          // Try to extract array from text
+          const m = text.match(/\[[\s\S]*\]/);
+          phrases = m ? JSON.parse(m[0]) : [];
+        }
+        if (!Array.isArray(phrases) || phrases.length === 0) {
+          return json({ error: "no phrases", raw: text.slice(0, 500) }, 502, cors);
+        }
+        return json({ phrases: phrases.slice(0, 8).map(String) }, 200, cors);
+      } catch (err) {
+        return json({ error: "fetch failed", detail: String(err) }, 502, cors);
+      }
     }
 
     // POST /admin/reset-quota — nuke the current user's daily quota.

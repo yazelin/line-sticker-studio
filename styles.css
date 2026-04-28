@@ -593,6 +593,32 @@ dialog menu button {
   white-space: nowrap;
 }
 
+.theme-gen-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.6rem 0 0.5rem;
+}
+.theme-gen-row input {
+  flex: 1;
+  background: #fafdf9;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  font-family: inherit;
+}
+.theme-gen-row input:focus {
+  outline: none;
+  border-color: var(--line-green);
+  box-shadow: 0 0 0 3px var(--line-green-soft);
+}
+.theme-gen-row button {
+  white-space: nowrap;
+  font-size: 0.85rem;
+  padding: 0.55rem 0.95rem;
+}
+
 .slot-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

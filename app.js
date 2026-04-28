@@ -1788,6 +1788,46 @@ slotsResetBtn.addEventListener("click", () => {
   renderSlotGrid(new Array(PACK_SIZE).fill(null));
 });
 slotsCopyBtn.addEventListener("click", copyPromptToGemini);
+
+// AI theme generator — fill 8 custom slots from a user description.
+const themeInput = $("theme-input");
+const themeGenBtn = $("theme-gen-btn");
+const themeGenStatus = $("theme-gen-status");
+themeGenBtn?.addEventListener("click", async () => {
+  const description = themeInput.value.trim();
+  if (!description) {
+    alert("請先描述你要的主題");
+    themeInput.focus();
+    return;
+  }
+  themeGenBtn.disabled = true;
+  themeGenStatus.hidden = false;
+  themeGenStatus.textContent = "✨ AI 想中…";
+  try {
+    const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/generate-themes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description, lang: "zh-TW" }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+    const { phrases } = await resp.json();
+    if (!Array.isArray(phrases) || phrases.length === 0) {
+      throw new Error("AI 沒回 phrases");
+    }
+    // Fill the 8 slots with the generated phrases.
+    const cfg = phrases.slice(0, PACK_SIZE).map((p) => ({ phraseCustom: p }));
+    while (cfg.length < PACK_SIZE) cfg.push(null);
+    renderSlotGrid(cfg);
+    themeGenStatus.textContent =
+      `✓ 填入：${phrases.slice(0, PACK_SIZE).join(" / ")}`;
+    setTimeout(() => { themeGenStatus.hidden = true; }, 8000);
+  } catch (err) {
+    themeGenStatus.textContent = `失敗：${err.message}`;
+  } finally {
+    themeGenBtn.disabled = false;
+  }
+});
 settingsDialog.addEventListener("close", () => {
   if (settingsDialog.returnValue === "save") {
     state.slotConfig = readSlotConfigFromGrid();

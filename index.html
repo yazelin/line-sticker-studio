@@ -246,6 +246,11 @@
       <h3>自訂 8 格短語</h3>
       <p class="hint">每格挑一個內建短語、自己打一句、或留「隨機」讓 AI 從 50 句裡抽。<br>
         💡 自訂格可填中文 / 英文 / 日文 / 梗圖台詞 / emoji，最多 30 字 — 風格選「梗圖」或「廢文」會更搭。</p>
+      <div class="theme-gen-row">
+        <input type="text" id="theme-input" placeholder="✨ 描述你要的主題，AI 幫你想 8 句…例：「我家貓」「上班崩潰」「失戀現場」" />
+        <button type="button" class="primary" id="theme-gen-btn">生成 8 句</button>
+      </div>
+      <p class="hint" id="theme-gen-status" hidden></p>
       <div class="slot-grid" id="slot-grid"></div>
       <p class="hint" id="slots-copy-status" hidden></p>
       <menu>
