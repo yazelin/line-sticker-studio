@@ -319,6 +319,32 @@ async function handleOAuthCallback() {
   return true;
 }
 
+// Cross-tab quota sync — when one tab generates / hits 429, broadcast
+// the new quota numbers to all other open tabs of this app so their
+// "今日剩 X/3" counter stays accurate without polling.
+const authBroadcast = typeof BroadcastChannel !== "undefined"
+  ? new BroadcastChannel("line-sticker-auth")
+  : null;
+if (authBroadcast) {
+  authBroadcast.onmessage = (e) => {
+    if (e.data?.type === "quota-update" && e.data.quota) {
+      auth.quota = e.data.quota;
+      refreshAuthUi();
+    } else if (e.data?.type === "auth-cleared") {
+      clearAuth();
+      refreshAuthUi();
+    }
+  };
+}
+function broadcastQuota(quota) {
+  if (authBroadcast && quota) {
+    authBroadcast.postMessage({ type: "quota-update", quota });
+  }
+}
+function broadcastAuthCleared() {
+  if (authBroadcast) authBroadcast.postMessage({ type: "auth-cleared" });
+}
+
 async function refreshAuth() {
   auth.token = getStoredToken();
   if (!auth.token) {
@@ -732,6 +758,7 @@ async function fetchGrid(apiUrl, body) {
     try { payload = await resp.json(); } catch {}
     auth.quota = payload.quota || auth.quota;
     refreshAuthUi();
+    broadcastQuota(payload.quota);
     const e = new Error("QUOTA_EXCEEDED");
     e.code = "QUOTA_EXCEEDED";
     e.payload = payload;
@@ -745,6 +772,7 @@ async function fetchGrid(apiUrl, body) {
   if (json.quota) {
     auth.quota = json.quota;
     refreshAuthUi();
+    broadcastQuota(json.quota);
   }
   return json;
 }
@@ -2125,6 +2153,7 @@ authLogoutBtn.addEventListener("click", () => {
   if (!confirm("登出 LINE? 之後 AI 生成需要重新登入。")) return;
   clearAuth();
   refreshAuthUi();
+  broadcastAuthCleared();
 });
 authAdminResetBtn.addEventListener("click", async () => {
   if (!auth.token) return;
@@ -2138,6 +2167,7 @@ authAdminResetBtn.addEventListener("click", async () => {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
     await refreshAuth();
     refreshAuthUi();
+    broadcastQuota(auth.quota);
     authAdminResetBtn.title = `重設成功！剩餘 ${auth.quota?.limit || 3}/${auth.quota?.limit || 3}`;
   } catch (err) {
     alert(`重設失敗：${err.message}`);
