@@ -1364,7 +1364,7 @@ async function restoreAllBackgrounds() {
   }
   state.bgRemoved = false;
   bgRestoreBtn.hidden = true;
-  setBgProgress(0, "已還原成 Gemini 原圖（白底+黑邊）。可重新選邊框樣式再去背。");
+  setBgProgress(0, "已還原成 Gemini 原圖（綠底 #00FF00 + 黑邊）。可重新去背。");
 }
 
 function setBgProgress(pct, text) {
@@ -1823,9 +1823,9 @@ async function downloadZip() {
   const anyTransparent = includedTiles.some((t) => t.transparent);
   if (!anyTransparent) {
     const proceed = confirm(
-      "⚠ 還沒去背！下載的 PNG 都是白底 (opaque)，LINE Creators Market 上架時可能被退件（規定透明背景）。\n\n" +
-      "→ 確定：先去背再下載 (推薦) — 我會自動執行去背\n" +
-      "→ 取消：硬要下載 opaque 版本\n",
+      "⚠ 還沒去背！下載的 PNG 都是綠底（chroma-key 用的 #00FF00），LINE Creators Market 規定透明背景，這樣上架會被退件。\n\n" +
+      "→ 確定：先去背再下載（推薦）— 我會自動執行去背\n" +
+      "→ 取消：硬要下載綠底版本",
     );
     if (proceed) {
       // Run bg removal then re-trigger download.
@@ -1882,9 +1882,9 @@ async function downloadStickersOnly() {
   const anyTransparent = state.tiles.some((t) => t.transparent);
   if (!anyTransparent) {
     const proceed = confirm(
-      "⚠ 還沒去背！下載的 PNG 都是白底，貼到別的地方會有方塊感。\n\n" +
-      "→ 確定：先去背再下載 (推薦) — 我會自動執行去背\n" +
-      "→ 取消：硬要下載白底版本",
+      "⚠ 還沒去背！下載的 PNG 都是綠底（chroma-key 用的 #00FF00），貼到任何地方都會看到醜醜的綠色方塊。\n\n" +
+      "→ 確定：先去背再下載（推薦）— 我會自動執行去背\n" +
+      "→ 取消：硬要下載綠底版本",
     );
     if (proceed) {
       await removeAllBackgrounds();
@@ -1982,7 +1982,7 @@ ZIP 內容
 是否透明背景
 ------------
 - 如果你在前端按過「全部去背」，就是透明 PNG (LINE 要求)。
-- 如果跳過去背，每張會是白底；上架前建議至少對主要圖片去一次背。
+- 如果跳過去背，每張會是綠底（#00FF00）；上架前一定要去背，不然會被 LINE 退件。
 ${campSection}
 上架步驟
 --------
