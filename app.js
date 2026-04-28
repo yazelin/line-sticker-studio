@@ -282,6 +282,104 @@ dropZone.addEventListener("drop", (e) => {
 });
 clearBtn.addEventListener("click", resetAll);
 
+// ------------------------------------------------------------------
+// Camera capture (getUserMedia → canvas → File → handleFile)
+
+const cameraDialog = $("camera-dialog");
+const cameraVideo = $("camera-video");
+const cameraPreview = $("camera-preview");
+const cameraCanvas = $("camera-canvas");
+const cameraError = $("camera-error");
+const cameraOpenBtn = $("open-camera-btn");
+const cameraCloseBtn = $("camera-close-btn");
+const cameraShootBtn = $("camera-shoot-btn");
+const cameraRetakeBtn = $("camera-retake-btn");
+const cameraUseBtn = $("camera-use-btn");
+let cameraStream = null;
+let cameraCapturedBlob = null;
+
+cameraOpenBtn?.addEventListener("click", openCamera);
+cameraCloseBtn?.addEventListener("click", closeCamera);
+cameraShootBtn?.addEventListener("click", shootCamera);
+cameraRetakeBtn?.addEventListener("click", retakeCamera);
+cameraUseBtn?.addEventListener("click", useCameraShot);
+
+async function openCamera() {
+  if (dropZone.classList.contains("locked")) {
+    alert("請先勾選最上方的 LINE 規定確認");
+    return;
+  }
+  cameraError.hidden = true;
+  cameraPreview.hidden = true;
+  cameraVideo.hidden = false;
+  cameraShootBtn.hidden = false;
+  cameraRetakeBtn.hidden = true;
+  cameraUseBtn.hidden = true;
+  cameraDialog.showModal();
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 1280 }, facingMode: "user" },
+    });
+    cameraVideo.srcObject = cameraStream;
+  } catch (err) {
+    cameraError.hidden = false;
+    cameraError.textContent = `相機存取失敗：${err.message}。請確認瀏覽器權限。`;
+  }
+}
+
+function stopCameraStream() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((t) => t.stop());
+    cameraStream = null;
+  }
+  cameraVideo.srcObject = null;
+}
+
+function closeCamera() {
+  stopCameraStream();
+  cameraDialog.close();
+}
+
+function shootCamera() {
+  if (!cameraVideo.videoWidth) return;
+  const w = cameraVideo.videoWidth;
+  const h = cameraVideo.videoHeight;
+  cameraCanvas.width = w;
+  cameraCanvas.height = h;
+  const ctx = cameraCanvas.getContext("2d");
+  // Mirror to match the live preview (which is mirrored via CSS).
+  ctx.translate(w, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(cameraVideo, 0, 0, w, h);
+  cameraCanvas.toBlob((blob) => {
+    cameraCapturedBlob = blob;
+    cameraPreview.src = URL.createObjectURL(blob);
+    cameraPreview.hidden = false;
+    cameraVideo.hidden = true;
+    cameraShootBtn.hidden = true;
+    cameraRetakeBtn.hidden = false;
+    cameraUseBtn.hidden = false;
+  }, "image/png");
+}
+
+function retakeCamera() {
+  cameraCapturedBlob = null;
+  cameraPreview.hidden = true;
+  cameraVideo.hidden = false;
+  cameraShootBtn.hidden = false;
+  cameraRetakeBtn.hidden = true;
+  cameraUseBtn.hidden = true;
+}
+
+function useCameraShot() {
+  if (!cameraCapturedBlob) return;
+  const file = new File([cameraCapturedBlob], `camera-${Date.now()}.png`, {
+    type: "image/png",
+  });
+  closeCamera();
+  handleFile(file);
+}
+
 async function handleFile(file) {
   if (!file || !file.type.startsWith("image/")) {
     alert("請上傳圖片檔。");
