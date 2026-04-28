@@ -187,11 +187,11 @@ const I18N = {
     "ko": "원본 그리드 다운로드",
   },
   download_zip_btn: {
-    "zh-TW": "下載完整 ZIP（含全部貼圖 + main + tab + 說明）",
-    "zh-CN": "下载完整 ZIP（含全部贴图 + main + tab + 说明）",
-    "en": "Download full ZIP (all stickers + main + tab + README)",
-    "ja": "完全な ZIP をダウンロード (全スタンプ + main + tab + 説明)",
-    "ko": "전체 ZIP 다운로드 (모든 스티커 + main + tab + README)",
+    "zh-TW": "下載這組 ZIP（8 張貼圖 + main + tab + 說明）",
+    "zh-CN": "下载这组 ZIP（8 张贴图 + main + tab + 说明）",
+    "en": "Download this set as ZIP (8 stickers + main + tab + README)",
+    "ja": "このセットを ZIP でダウンロード (8 スタンプ + main + tab + 説明)",
+    "ko": "이 세트 ZIP 다운로드 (8 스티커 + main + tab + README)",
   },
   open_camera_btn: {
     "zh-TW": "📷 用相機現拍",
