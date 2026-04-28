@@ -323,11 +323,24 @@
       </label>
 
       <label class="field">
-        貼圖上要不要印中文字
+        文字模式
         <select id="with-text">
-          <option value="true" selected>要印（AI 把字寫上去）</option>
-          <option value="false">不要（純圖貼圖）</option>
+          <option value="true" selected>📝 印字（AI 把短語寫在貼圖上）</option>
+          <option value="false">🤐 無字模式（純表情/動作、不印任何字）</option>
         </select>
+        <span class="field-hint">無字也是 LINE 上很受歡迎的設計：純粹靠表情和姿勢溝通，更通用、不限語言。</span>
+      </label>
+
+      <label class="field">
+        🌐 貼圖文字語言
+        <select id="text-lang">
+          <option value="zh-TW" selected>繁體中文</option>
+          <option value="zh-CN">简体中文</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+        </select>
+        <span class="field-hint">同時控制 ✨ AI 產 8 句的語言，以及 AI 把字寫上貼圖時用哪種文字。選「無字模式」時無作用。</span>
       </label>
     </div>
 
@@ -351,12 +364,14 @@
 
   <dialog id="settings-dialog">
     <form method="dialog">
-      <h3>自訂 8 格短語</h3>
+      <h3>自訂 8 格短語 + 動作</h3>
       <p class="hint">每格挑一個內建短語、自己打一句、或留「隨機」讓 AI 從 50 句裡抽。<br>
-        💡 自訂格可填中文 / 英文 / 日文 / 梗圖台詞 / emoji，最多 30 字 — 風格選「梗圖」或「廢文」會更搭。</p>
+        💡 自訂格可填中文 / 英文 / 日文 / 梗圖台詞 / emoji，最多 30 字 — 風格選「梗圖」或「廢文」會更搭。<br>
+        🕺 每格右下「+ 動作」可加英文 pose 描述（例：<code>slumped at desk, weary look</code>），<strong>無字模式必填、不然角色會抽到無關的姿勢</strong>。<br>
+        ✨ 按下「生成 8 句」會用上方主頁面選的「貼圖文字語言」產短語、並同時自動填好對應動作。</p>
       <div class="theme-gen-row">
-        <input type="text" id="theme-input" placeholder="✨ 描述你要的主題，AI 幫你想 8 句…例：「我家貓」「上班崩潰」「失戀現場」" />
-        <button type="button" class="primary" id="theme-gen-btn">生成 8 句</button>
+        <input type="text" id="theme-input" placeholder="✨ 描述你要的主題，AI 幫你想 8 句 + 8 個動作…例：「我家貓」「上班崩潰」「失戀現場」" />
+        <button type="button" class="primary" id="theme-gen-btn">生成 8 句 + 動作</button>
       </div>
       <p class="hint" id="theme-gen-status" hidden></p>
       <div class="slot-grid" id="slot-grid"></div>

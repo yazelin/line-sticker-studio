@@ -301,16 +301,21 @@ function phrasesManifest() {
   return DEFAULT_PHRASES.map((label, id) => ({ id, label }));
 }
 
-// Resolve a per-slot config (length 0..9) into a length-9 phrase array.
-// Each slot can be:
-//   null              → random pick from defaults (excluding already-used)
-//   { phraseId: N }   → DEFAULT_PHRASES[N]
-//   { phraseCustom }  → free text
+// Resolve a per-slot config (length 0..9) into a length-9 array of
+// { phrase, action? } objects.
+//
+// Each input slot can be:
+//   null                                     → random pick (no action override)
+//   { phraseId: N, action? }                 → DEFAULT_PHRASES[N], optional action override
+//   { phraseCustom: "...", action? }         → free text, optional action description
 // Slots beyond the user's array are treated as null (random).
-// Custom flat-array `phrases` is supported as a fallback for backward
-// compat — equivalent to a length-N array of { phraseCustom: phrases[i] }
-// padded out with nulls.
-function pickNinePhrases({ slots, phrases, campaign }) {
+// `phrases` (flat array) is a backward-compat fallback equivalent to N
+// custom-phrase slots padded with nulls.
+//
+// `action` (when present) is a free-form English pose/expression description
+// that overrides the ACTION_FOR_PHRASE map. AI theme generator can produce
+// {phrase, action} pairs so withText=false stickers still get correct poses.
+function pickNineSlots({ slots, phrases, campaign }) {
   // Decide the pool used to fill un-pinned slots:
   //   campaign.phrasePoolOverride > user's `phrases` array > DEFAULT_PHRASES
   const camp = campaign ? campaignById(campaign) : null;
@@ -323,11 +328,15 @@ function pickNinePhrases({ slots, phrases, campaign }) {
 
   // Backward-compat: no slots, only flat phrases pool — random draw 9.
   if (!Array.isArray(slots) && fallbackPool !== DEFAULT_PHRASES) {
-    if (fallbackPool.length >= 9) return shuffle(fallbackPool).slice(0, 9);
-    const extras = shuffle(
-      DEFAULT_PHRASES.filter((d) => !fallbackPool.includes(d))
-    ).slice(0, 9 - fallbackPool.length);
-    return shuffle(fallbackPool.concat(extras));
+    const picked = fallbackPool.length >= 9
+      ? shuffle(fallbackPool).slice(0, 9)
+      : shuffle(
+          fallbackPool.concat(
+            shuffle(DEFAULT_PHRASES.filter((d) => !fallbackPool.includes(d)))
+              .slice(0, 9 - fallbackPool.length)
+          )
+        );
+    return picked.map((phrase) => ({ phrase }));
   }
 
   const result = new Array(9).fill(null);
@@ -338,9 +347,13 @@ function pickNinePhrases({ slots, phrases, campaign }) {
   for (let i = 0; i < 9; i++) {
     const slot = slotArr[i];
     if (!slot) continue;
+    const action =
+      typeof slot.action === "string" && slot.action.trim()
+        ? slot.action.trim()
+        : undefined;
     if (typeof slot.phraseCustom === "string" && slot.phraseCustom.trim()) {
       const t = slot.phraseCustom.trim();
-      result[i] = t;
+      result[i] = { phrase: t, action };
       used.add(t);
     } else if (
       Number.isInteger(slot.phraseId) &&
@@ -348,7 +361,7 @@ function pickNinePhrases({ slots, phrases, campaign }) {
       slot.phraseId < DEFAULT_PHRASES.length
     ) {
       const t = DEFAULT_PHRASES[slot.phraseId];
-      result[i] = t;
+      result[i] = { phrase: t, action };
       used.add(t);
     }
   }
@@ -357,24 +370,31 @@ function pickNinePhrases({ slots, phrases, campaign }) {
   const remaining = shuffle(fallbackPool.filter((p) => !used.has(p)));
   for (let i = 0; i < 9; i++) {
     if (result[i] === null) {
-      result[i] =
+      const phrase =
         remaining.pop() ||
         fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+      result[i] = { phrase };
     }
   }
   return result;
 }
 
-function actionFor(phrase) {
+function actionFor(slot) {
+  if (slot && typeof slot.action === "string" && slot.action.trim()) {
+    return slot.action.trim();
+  }
+  const phrase = slot && slot.phrase;
   return ACTION_FOR_PHRASE[phrase]
     || "expressive sticker pose appropriate for the phrase";
 }
 
 // IMPORTANT: pass `nine` in pre-computed by the caller (NOT internally
-// derived) — pickNinePhrases is non-deterministic (Math.random + shuffle),
+// derived) — pickNineSlots is non-deterministic (Math.random + shuffle),
 // so calling it twice in one request yields TWO different sets. The
 // prompt and the response MUST share the same nine phrases.
-function buildPrompt({ nine, styleHint, withText, campaign }) {
+//
+// `nine` shape: array of length 9, each element { phrase: string, action?: string }.
+function buildPrompt({ nine, styleHint, withText, campaign, lang }) {
   const camp = campaign ? campaignById(campaign) : null;
   // Campaign forces win over user input.
   const effectiveStyle = (camp && camp.forceStyleHint) || styleHint;
@@ -398,6 +418,17 @@ function buildPrompt({ nine, styleHint, withText, campaign }) {
   }
   withText = effectiveWithText; // override the local var the rest of the fn uses
 
+  // Language hint for rendered text. Auto = trust whatever script the
+  // phrase string is in (Gemini handles mixed scripts well).
+  const LANG_LABEL = {
+    "zh-TW": "Traditional Chinese (繁體中文) glyphs",
+    "zh-CN": "Simplified Chinese (简体中文) glyphs",
+    en: "Latin alphabet English",
+    ja: "Japanese kana + kanji glyphs",
+    ko: "Korean Hangul glyphs",
+  };
+  const langScriptHint = LANG_LABEL[lang] || null;
+
   const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
   const NAMES = [
     "top-left", "top-centre", "top-right",
@@ -405,8 +436,9 @@ function buildPrompt({ nine, styleHint, withText, campaign }) {
     "bottom-left", "bottom-centre", "bottom-right",
   ];
   const layout = LETTERS.map((letter, i) => {
-    const phrase = nine[i];
-    const action = actionFor(phrase);
+    const slot = nine[i];
+    const phrase = slot.phrase;
+    const action = actionFor(slot);
     if (withText) {
       return `  [${letter}] ${NAMES[i]} cell:
       EXACT TEXT TO PRINT (verbatim, character-by-character, no substitution): "${phrase}"
@@ -459,7 +491,11 @@ OUTPUT RULES — strictly enforced:
 - Final image is a 3×3 sticker grid. ONE seamless 1:1 image.
 - No visible borders, gutters, dividers, or letter labels (A..I) drawn on the image. The layout above is for you, not text to paint.
 - ${withText
-    ? 'Each cell may contain ONLY the assigned phrase as overlaid text — render it in whatever script/language it was written in (Chinese / English / Japanese / Korean / emoji / mixed all OK). Do NOT add extra words, do NOT translate, do NOT add decorative letters/numbers beyond what is in the assigned phrase.'
+    ? `Each cell may contain ONLY the assigned phrase as overlaid text — render it in whatever script/language it was written in (Chinese / English / Japanese / Korean / emoji / mixed all OK). Do NOT add extra words, do NOT translate, do NOT add decorative letters/numbers beyond what is in the assigned phrase.${
+        langScriptHint
+          ? ` The user has indicated the intended sticker text language is ${langScriptHint} — render any glyphs cleanly and correctly in that script.`
+          : ""
+      }`
     : 'No text, letters, numbers, captions, or watermarks anywhere on the image.'}
 - Every cell must use a PURE WHITE background — uniform across all 9 cells, no off-white, no cream, no gray.
 - The character must be obviously the same person/creature/style as the reference in all 9 cells.
@@ -626,13 +662,20 @@ export default {
         return json({ error: "description required" }, 400, cors);
       }
       const lang = String(body?.lang || "zh-TW");
-      const prompt = `你是 LINE 貼圖文案發想助手。根據使用者描述的主題，產出 8 個適合作為 LINE 貼圖文字的「短語」(每句 2-8 字)。語氣口語、聊天感、情緒鮮明、避免廣告或商標。
+      const prompt = `你是 LINE 貼圖文案 + 動作發想助手。根據使用者描述的主題，產出 8 組「短語 + 對應動作描述」配對。
+
+每組包含：
+- "phrase": 2-8 字短語 (語氣口語、聊天感、情緒鮮明、避免廣告或商標)。語言：${lang === "en" ? "English" : lang === "ja" ? "日本語" : lang === "ko" ? "한국어" : "繁體中文"}
+- "action": 5-15 字英文動作 + 表情描述 (用英文，因為 Gemini image 對英文 pose description 理解最準)。例：「slumped at desk, weary look, head in hands」「jumping in the air arms wide, huge smile」
 
 使用者主題：「${description}」
-語言：${lang === "en" ? "English" : lang === "ja" ? "日本語" : lang === "ko" ? "한국어" : "繁體中文"}
 
 請只回 JSON 陣列、無 markdown 包裝：
-["短語1", "短語2", "短語3", "短語4", "短語5", "短語6", "短語7", "短語8"]`;
+[
+  {"phrase":"短語1","action":"english action description"},
+  {"phrase":"短語2","action":"english action description"},
+  ... × 8
+]`;
       const apiUrl = `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent?key=${env.VERTEX_API_KEY}`;
       const payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -650,16 +693,35 @@ export default {
         }
         const data = await upstream.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-        let phrases;
-        try { phrases = JSON.parse(text); } catch {
+        let parsed;
+        try { parsed = JSON.parse(text); } catch {
           // Try to extract array from text
           const m = text.match(/\[[\s\S]*\]/);
-          phrases = m ? JSON.parse(m[0]) : [];
+          parsed = m ? JSON.parse(m[0]) : [];
         }
-        if (!Array.isArray(phrases) || phrases.length === 0) {
+        if (!Array.isArray(parsed) || parsed.length === 0) {
           return json({ error: "no phrases", raw: text.slice(0, 500) }, 502, cors);
         }
-        return json({ phrases: phrases.slice(0, 8).map(String) }, 200, cors);
+        // Normalise to [{ phrase, action? }] — accept either old string-only
+        // shape or the new {phrase, action} object shape.
+        const items = parsed.slice(0, 8).map((entry) => {
+          if (typeof entry === "string") return { phrase: entry.trim() };
+          if (entry && typeof entry === "object") {
+            const phrase = String(entry.phrase || "").trim();
+            const action = String(entry.action || "").trim();
+            return action ? { phrase, action } : { phrase };
+          }
+          return { phrase: String(entry || "").trim() };
+        }).filter((s) => s.phrase);
+        return json(
+          {
+            // Back-compat field — string array of phrases only.
+            phrases: items.map((s) => s.phrase),
+            // New field — full {phrase, action} pairs.
+            slots: items,
+          },
+          200, cors,
+        );
       } catch (err) {
         return json({ error: "fetch failed", detail: String(err) }, 502, cors);
       }
@@ -689,7 +751,7 @@ export default {
     if (url.pathname === "/prompt") {
       let body;
       try { body = await request.json(); } catch { body = {}; }
-      const nine = pickNinePhrases({
+      const nine = pickNineSlots({
         slots: body?.slots,
         phrases: body?.phrases,
         campaign: body?.campaign,
@@ -699,8 +761,16 @@ export default {
         styleHint: body?.styleHint,
         withText: body?.withText !== false,
         campaign: body?.campaign,
+        lang: body?.lang,
       });
-      return json({ prompt: promptText, phrases: nine }, 200, cors);
+      return json(
+        {
+          prompt: promptText,
+          phrases: nine.map((s) => s.phrase),
+          slots: nine,
+        },
+        200, cors,
+      );
     }
 
     if (!env.VERTEX_API_KEY) {
@@ -756,6 +826,7 @@ export default {
       styleHint,
       withText,
       campaign,
+      lang,
     } = body || {};
 
     if (typeof imageBase64 !== "string" || imageBase64.length < 100) {
@@ -768,10 +839,10 @@ export default {
     const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
     // Pick the 9 phrases ONCE per request, then use the same set both for
     // the prompt sent to Gemini AND the response we return to the client.
-    // (Earlier bug: pickNinePhrases was called twice → two different
+    // (Earlier bug: pickNineSlots was called twice → two different
     //  random sets, so the response's `phrases` field never matched what
     //  Gemini actually saw, making fidelity testing meaningless.)
-    const nine = pickNinePhrases({ slots, phrases, campaign });
+    const nine = pickNineSlots({ slots, phrases, campaign });
     const chosenPrompt = typeof prompt === "string" && prompt.trim()
       ? prompt
       : buildPrompt({
@@ -779,6 +850,7 @@ export default {
           styleHint,
           withText: withText !== false,
           campaign,
+          lang,
         });
 
     const apiUrl = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
@@ -850,8 +922,10 @@ export default {
         mimeType: imagePart.inlineData.mimeType || "image/png",
         data: imagePart.inlineData.data,
         model: chosenModel,
-        phrases: nine,
+        phrases: nine.map((s) => s.phrase),
+        slots: nine,
         campaign: campaign || null,
+        lang: lang || null,
         quota: { used: usedAfter, limit: DAILY_LIMIT },
       },
       200,

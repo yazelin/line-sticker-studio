@@ -856,6 +856,38 @@ dialog menu button {
   width: 100%;
 }
 
+.slot-action-toggle {
+  background: #fff8ef;
+  border: 1px dashed #d4ad6a;
+  color: #6b4a1f;
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  margin-top: 3px;
+  cursor: pointer;
+  border-radius: 4px;
+  align-self: flex-start;
+  font-weight: 600;
+  font-family: inherit;
+}
+.slot-action-toggle:hover {
+  background: #ffe9c2;
+}
+
+.slot-action {
+  background: #fff8ef;
+  border: 1px dashed #d4ad6a;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.68rem;
+  color: #6b4a1f;
+  font-family: inherit;
+  width: 100%;
+}
+.slot-action::placeholder {
+  color: #ba9655;
+  font-style: italic;
+}
+
 #settings-dialog {
   max-width: 560px;
 }
@@ -986,6 +1018,14 @@ dialog menu button {
   gap: 5px;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.field-hint {
+  font-size: 0.7rem;
+  color: var(--muted);
+  line-height: 1.35;
+  margin-top: 1px;
+  font-weight: 400;
 }
 
 .field input,

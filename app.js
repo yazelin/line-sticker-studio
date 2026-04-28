@@ -109,6 +109,20 @@ const LINE_STATE_KEY = "line-oauth-state";
 const LINE_CHANNEL_ID = "2009916047";
 const DEFAULT_API_URL = "https://line-sticker-gemini.yazelinj303.workers.dev";
 const LANG_KEY = "line-sticker-lang";
+// Sticker-text language: separate from UI language. Controls (a) the
+// language AI uses when brainstorming 8 phrases and (b) the script AI
+// uses when rendering text onto the sticker. Default zh-TW (Taiwan).
+const TEXT_LANG_KEY = "line-sticker-text-lang";
+const SUPPORTED_TEXT_LANGS = ["zh-TW", "zh-CN", "en", "ja", "ko"];
+function loadTextLang() {
+  const v = localStorage.getItem(TEXT_LANG_KEY);
+  return SUPPORTED_TEXT_LANGS.includes(v) ? v : "zh-TW";
+}
+function saveTextLang(lang) {
+  if (SUPPORTED_TEXT_LANGS.includes(lang)) {
+    localStorage.setItem(TEXT_LANG_KEY, lang);
+  }
+}
 
 // ------------------------------------------------------------------
 // i18n — minimal multi-language for the most visible UI strings.
@@ -516,6 +530,7 @@ const state = {
   sourceFile: null,      // original File (for resize)
   styleHint: "match",
   withText: true,
+  textLang: loadTextLang(), // "zh-TW" | "zh-CN" | "en" | "ja" | "ko"
   campaign: null,        // null or campaign id
   slotConfig: loadSlotConfig(), // length-PACK_SIZE
   tiles: [],             // [{ canvas, transparent: false, phrase, busy: false }]
@@ -688,7 +703,24 @@ function resetAll() {
 
 const styleHintSel = $("style-hint");
 const withTextSel = $("with-text");
+const textLangSel = $("text-lang");
 const generateBtn = $("generate-btn");
+
+if (textLangSel) {
+  textLangSel.value = state.textLang;
+  textLangSel.addEventListener("change", () => {
+    state.textLang = textLangSel.value;
+    saveTextLang(state.textLang);
+  });
+}
+// Dim the language picker while 無字模式 — text-lang is irrelevant then.
+function refreshTextLangAvailability() {
+  if (!textLangSel) return;
+  const isNoText = withTextSel.value === "false";
+  textLangSel.disabled = isNoText;
+  textLangSel.parentElement?.classList.toggle("locked", isNoText);
+}
+withTextSel?.addEventListener("change", refreshTextLangAvailability);
 const genProgress = $("gen-progress");
 const genBarFill = $("gen-bar-fill");
 const genProgressText = $("gen-progress-text");
@@ -785,6 +817,7 @@ async function generateAll() {
       styleHint: state.styleHint,
       withText: state.withText,
       campaign: state.campaign,
+      lang: state.textLang,
     });
     clearInterval(ticker);
 
@@ -1192,6 +1225,8 @@ async function rerollTile(idx, overridePhrase = null) {
     // The other 8 slots fall through to the saved per-slot config.
     const effectivePhrase = overridePhrase || tile.phrase;
     const rerollSlots = state.slotConfig.slice();
+    // Reroll for ONE cell — pin its phrase so Gemini doesn't wander.
+    // We send the same shape the worker expects (phraseCustom).
     if (effectivePhrase) rerollSlots[0] = { phraseCustom: effectivePhrase };
     const result = await fetchGrid(apiUrl, {
       imageBase64: base64,
@@ -1200,6 +1235,7 @@ async function rerollTile(idx, overridePhrase = null) {
       styleHint: state.styleHint,
       withText: state.withText,
       campaign: state.campaign,
+      lang: state.textLang,
     });
     const gridImg = await loadImage(
       `data:${result.mimeType};base64,${result.data}`,
@@ -2032,6 +2068,7 @@ function applyCampaignLocks() {
     withTextSel.parentElement.classList.add("locked");
     state.withText = camp.forceWithText;
   }
+  refreshTextLangAvailability();
 }
 
 function refreshCampaignActive() {
@@ -2102,15 +2139,24 @@ themeGenBtn?.addEventListener("click", async () => {
     const resp = await fetch(apiUrl.replace(/\/$/, "") + "/generate-themes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description, lang: "zh-TW" }),
+      body: JSON.stringify({ description, lang: state.textLang }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
-    const { phrases } = await resp.json();
+    const { phrases, slots: aiSlots } = await resp.json();
     if (!Array.isArray(phrases) || phrases.length === 0) {
       throw new Error("AI 沒回 phrases");
     }
-    // Fill the 8 slots with the generated phrases.
-    const cfg = phrases.slice(0, PACK_SIZE).map((p) => ({ phraseCustom: p }));
+    // Prefer the new {phrase, action} pairs if worker returned them — that
+    // way withText=false stickers still get correct poses (action drives
+    // the drawing even though phrase isn't rendered as text).
+    const items = Array.isArray(aiSlots) && aiSlots.length > 0
+      ? aiSlots
+      : phrases.map((p) => ({ phrase: p }));
+    const cfg = items.slice(0, PACK_SIZE).map((s) => {
+      const slot = { phraseCustom: s.phrase };
+      if (s.action) slot.action = s.action;
+      return slot;
+    });
     while (cfg.length < PACK_SIZE) cfg.push(null);
     renderSlotGrid(cfg);
     themeGenStatus.textContent =
@@ -2170,6 +2216,23 @@ function buildSlotCell(idx, slotValue) {
   customInput.hidden = true;
   cell.appendChild(customInput);
 
+  // Per-slot action override (English pose/expression description). Hidden
+  // by default; toggled with a small "+ 動作" link. AI theme generator
+  // pre-fills this from the {phrase, action} pairs it returns.
+  const actionToggle = document.createElement("button");
+  actionToggle.type = "button";
+  actionToggle.className = "slot-action-toggle";
+
+  const actionInput = document.createElement("input");
+  actionInput.type = "text";
+  actionInput.className = "slot-action";
+  actionInput.placeholder = "english pose / facial expression (optional)";
+  actionInput.maxLength = 120;
+  actionInput.hidden = true;
+
+  cell.appendChild(actionToggle);
+  cell.appendChild(actionInput);
+
   const v = slotValue || {};
   if (typeof v.phraseCustom === "string" && v.phraseCustom) {
     sel.value = "__custom__";
@@ -2180,10 +2243,22 @@ function buildSlotCell(idx, slotValue) {
   } else {
     sel.value = "__random__";
   }
+  if (typeof v.action === "string" && v.action) {
+    actionInput.value = v.action;
+    actionInput.hidden = false;
+    actionToggle.textContent = "✕ 動作";
+  } else {
+    actionToggle.textContent = "+ 動作";
+  }
 
   sel.addEventListener("change", () => {
     customInput.hidden = sel.value !== "__custom__";
     if (!customInput.hidden) customInput.focus();
+  });
+  actionToggle.addEventListener("click", () => {
+    actionInput.hidden = !actionInput.hidden;
+    actionToggle.textContent = actionInput.hidden ? "+ 動作" : "✕ 動作";
+    if (!actionInput.hidden) actionInput.focus();
   });
 
   return cell;
@@ -2195,11 +2270,21 @@ function readSlotConfigFromGrid() {
     const i = parseInt(cell.dataset.idx, 10);
     const sel = cell.querySelector(".slot-select");
     const custom = cell.querySelector(".slot-custom");
+    const actionEl = cell.querySelector(".slot-action");
+    const actionVal = actionEl?.value.trim() || "";
     if (sel.value === "__custom__") {
       const t = custom.value.trim();
-      if (t) cfg[i] = { phraseCustom: t };
+      if (t) {
+        cfg[i] = { phraseCustom: t };
+        if (actionVal) cfg[i].action = actionVal;
+      }
     } else if (sel.value.startsWith("preset:")) {
       cfg[i] = { phraseId: parseInt(sel.value.slice(7), 10) };
+      if (actionVal) cfg[i].action = actionVal;
+    } else if (actionVal) {
+      // Pure random phrase but custom action — possible if user only
+      // wanted to bias the pose. Worker treats this as random phrase
+      // (no pin) so we just drop the orphan action.
     }
   });
   return cfg;
@@ -2208,10 +2293,12 @@ function readSlotConfigFromGrid() {
 function refreshSlotStatus() {
   let pinned = 0;
   let custom = 0;
+  let withAction = 0;
   for (const s of state.slotConfig) {
     if (!s) continue;
     if (typeof s.phraseCustom === "string") custom += 1;
     else if (Number.isInteger(s.phraseId)) pinned += 1;
+    if (typeof s.action === "string" && s.action) withAction += 1;
   }
   if (pinned === 0 && custom === 0) {
     slotStatusText.textContent = "🎲 目前：8 格短語全隨機（從內建 50 句抽）";
@@ -2222,6 +2309,7 @@ function refreshSlotStatus() {
   if (custom > 0) parts.push(`自訂 ${custom} 句`);
   const remain = PACK_SIZE - pinned - custom;
   if (remain > 0) parts.push(`其他 ${remain} 格隨機`);
+  if (withAction > 0) parts.push(`${withAction} 格附動作描述`);
   slotStatusText.textContent = `🎨 你挑了：${parts.join("、")}`;
 }
 
@@ -2238,6 +2326,8 @@ async function copyPromptToGemini() {
         slots: cfg,
         styleHint: state.styleHint,
         withText: state.withText,
+        campaign: state.campaign,
+        lang: state.textLang,
       }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -2536,6 +2626,7 @@ async function loadFromHistory(id) {
 
 refreshEstimate();
 refreshSlotStatus();
+refreshTextLangAvailability();
 // step-config is always visible now (so BYOG users can use settings dialog
 // to copy prompt for Gemini), so eager-load campaigns at boot.
 ensureCampaignsLoaded().then(renderCampaignPicker);
