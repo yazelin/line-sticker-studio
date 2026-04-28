@@ -354,12 +354,32 @@ function redirectUri() {
   return window.location.origin + window.location.pathname;
 }
 
+// PKCE verifier + state TTL: 10 minutes is plenty for round-trip
+// through LINE Login while preventing stale entries from haunting
+// future sign-in attempts.
+const LINE_PKCE_TTL_MS = 10 * 60 * 1000;
+const LINE_PKCE_TS_KEY = "line-pkce-ts";
+
+// Detect LINE in-app browser via UA. Only used to tweak the error
+// message — both branches use the same auth flow.
+function isLineInAppBrowser() {
+  return /Line\//i.test(navigator.userAgent);
+}
+
 async function startLineLogin() {
   const verifier = genVerifier();
   const challenge = await genChallenge(verifier);
   const state = genVerifier();
-  sessionStorage.setItem(LINE_VERIFIER_KEY, verifier);
-  sessionStorage.setItem(LINE_STATE_KEY, state);
+  // IMPORTANT: localStorage, NOT sessionStorage.
+  // sessionStorage is per-tab/per-webview-instance. iOS LINE in-app
+  // browser opens `access.line.me` via Universal Link → kicks the user
+  // into the LINE app for native auth → callback returns into a
+  // potentially-new webview context. sessionStorage from the original
+  // tab is gone → state mismatch. localStorage survives because it's
+  // origin-scoped, not session-scoped.
+  localStorage.setItem(LINE_VERIFIER_KEY, verifier);
+  localStorage.setItem(LINE_STATE_KEY, state);
+  localStorage.setItem(LINE_PKCE_TS_KEY, String(Date.now()));
   const params = new URLSearchParams({
     response_type: "code",
     client_id: LINE_CHANNEL_ID,
@@ -371,6 +391,12 @@ async function startLineLogin() {
   });
   window.location.href =
     `https://access.line.me/oauth2/v2.1/authorize?${params}`;
+}
+
+function clearPkceStorage() {
+  localStorage.removeItem(LINE_VERIFIER_KEY);
+  localStorage.removeItem(LINE_STATE_KEY);
+  localStorage.removeItem(LINE_PKCE_TS_KEY);
 }
 
 async function handleOAuthCallback() {
@@ -389,10 +415,18 @@ async function handleOAuthCallback() {
     return false;
   }
 
-  const expectedState = sessionStorage.getItem(LINE_STATE_KEY);
-  const verifier = sessionStorage.getItem(LINE_VERIFIER_KEY);
-  if (!expectedState || state !== expectedState || !verifier) {
-    alert("LINE 登入：state mismatch，請重試。");
+  const expectedState = localStorage.getItem(LINE_STATE_KEY);
+  const verifier = localStorage.getItem(LINE_VERIFIER_KEY);
+  const startedAt = parseInt(localStorage.getItem(LINE_PKCE_TS_KEY) || "0", 10);
+  const ageOk = startedAt && (Date.now() - startedAt) < LINE_PKCE_TTL_MS;
+
+  if (!expectedState || state !== expectedState || !verifier || !ageOk) {
+    const inApp = isLineInAppBrowser();
+    const inAppHint = inApp
+      ? "\n\n📱 偵測到你正在 LINE 內建瀏覽器中。LINE app 會把授權跳到外部 → 回來時可能跑到不同分頁，登入資料就遺失了。\n\n👉 解法：請點右上角「⋯」→「在 Safari 開啟」(iOS) /「在 Chrome 開啟」(Android)，重新登入。"
+      : "\n\n如果剛剛切過分頁、或經過很長時間才回來，請重新點「用 LINE 登入」再試一次。";
+    alert(`LINE 登入逾時或被中斷。${inAppHint}`);
+    clearPkceStorage();
     window.history.replaceState({}, document.title, cleanUrl);
     return false;
   }
@@ -420,8 +454,7 @@ async function handleOAuthCallback() {
     console.error(err);
     alert(`LINE 登入失敗：${err.message}`);
   } finally {
-    sessionStorage.removeItem(LINE_VERIFIER_KEY);
-    sessionStorage.removeItem(LINE_STATE_KEY);
+    clearPkceStorage();
     window.history.replaceState({}, document.title, cleanUrl);
   }
   return true;
@@ -2368,7 +2401,22 @@ const authQuotaEl = $("auth-quota");
 const authLogoutBtn = $("auth-logout-btn");
 const authAdminResetBtn = $("auth-admin-reset-btn");
 
-authLoginBtn.addEventListener("click", () => startLineLogin());
+authLoginBtn.addEventListener("click", () => {
+  // Heads up the in-app browser case BEFORE redirect so the user has
+  // a chance to switch to Safari/Chrome instead of bouncing through a
+  // failing flow + getting a confusing error after the fact.
+  if (isLineInAppBrowser()) {
+    const proceed = confirm(
+      "📱 偵測到你正在 LINE 內建瀏覽器中。\n\n" +
+      "LINE 內建瀏覽器跑 LINE Login 常常會失敗（state mismatch），因為授權會跳到外部 app 處理、回來時可能進入新分頁。\n\n" +
+      "👉 推薦解法：點右上角「⋯」→「在 Safari / Chrome 開啟」，再重新登入。\n\n" +
+      "→ 確定：仍要在這個內建瀏覽器試（可能失敗）\n" +
+      "→ 取消：先到外部瀏覽器開"
+    );
+    if (!proceed) return;
+  }
+  startLineLogin();
+});
 authLogoutBtn.addEventListener("click", () => {
   if (!confirm("登出 LINE? 之後 AI 生成需要重新登入。")) return;
   clearAuth();
