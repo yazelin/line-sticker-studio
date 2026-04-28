@@ -260,6 +260,22 @@
     </form>
   </dialog>
 
+  <dialog id="camera-dialog" class="camera-dialog">
+    <h3>📷 用相機拍一張</h3>
+    <div class="camera-stage">
+      <video id="camera-video" autoplay playsinline muted></video>
+      <img id="camera-preview" alt="拍攝預覽" hidden />
+    </div>
+    <div id="camera-error" class="hint mini" hidden></div>
+    <menu>
+      <button type="button" class="ghost" id="camera-close-btn">取消</button>
+      <button type="button" class="ghost" id="camera-retake-btn" hidden>重拍</button>
+      <button type="button" class="primary" id="camera-shoot-btn">📸 拍照</button>
+      <button type="button" class="primary" id="camera-use-btn" hidden>✓ 用這張</button>
+    </menu>
+    <canvas id="camera-canvas" hidden></canvas>
+  </dialog>
+
   <section class="card" id="step-preview" hidden>
     <h2>③ 預覽 + 去背</h2>
     <p class="hint">點任一張可以重抽（仍會耗 API 呼叫）。LINE 上架需要透明背景，按下面按鈕在你的瀏覽器內跑去背模型，圖片不會上傳到任何伺服器。</p>
