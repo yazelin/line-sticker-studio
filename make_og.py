@@ -36,10 +36,12 @@ FONT_REG = "/home/ct/.local/share/fonts/NotoSansTC-Light.ttf"
 
 
 def chroma_key_green(img: Image.Image,
-                      threshold: float = 0.20,
+                      threshold: float = 0.18,
                       despill_threshold: float = 0.05) -> Image.Image:
     """Same algorithm as the frontend's chromaKeyGreen() in app.js:
     α=0 where greenness > threshold, despill at edges by capping G to (R+B)/2.
+    Slightly tighter threshold (0.18 vs frontend's 0.25) to compensate
+    for JPEG compression artifacts in our recompressed sample-grid.
     """
     rgba = img.convert("RGBA")
     px = rgba.load()
@@ -51,20 +53,62 @@ def chroma_key_green(img: Image.Image,
             if greenness > threshold:
                 px[x, y] = (r, g, b, 0)
             elif greenness > despill_threshold:
-                # Cap green channel
+                # Cap green channel to remove green tint
                 cap = int((r + b) / 2)
                 px[x, y] = (r, min(g, cap), b, a)
     return rgba
 
 
+def erode_alpha_1px(img: Image.Image) -> Image.Image:
+    """One-pixel alpha erosion: any pixel touching a fully-transparent
+    neighbour becomes transparent. Cleans up the half-alpha green-tinted
+    fringe that chroma keying leaves behind. Mirrors the same step the
+    frontend runs after chromaKeyGreen()."""
+    rgba = img.convert("RGBA")
+    w, h = rgba.size
+    src_alpha = rgba.split()[3].load()
+    out = rgba.copy()
+    out_px = out.load()
+    for y in range(h):
+        for x in range(w):
+            if src_alpha[x, y] == 0:
+                continue
+            # Touch any of 4-neighbours that are α=0 → erode self
+            if (
+                (x > 0 and src_alpha[x - 1, y] == 0) or
+                (x < w - 1 and src_alpha[x + 1, y] == 0) or
+                (y > 0 and src_alpha[x, y - 1] == 0) or
+                (y < h - 1 and src_alpha[x, y + 1] == 0)
+            ):
+                r, g, b, _ = out_px[x, y]
+                out_px[x, y] = (r, g, b, 0)
+    return out
+
+
+# Inset each cell crop by this fraction per side to avoid bleed from
+# neighbouring cells (Gemini sometimes lets the character cross the
+# cell seam by a few pixels, and that bleed shows up as a hard line
+# after chroma-keying since it's not green). Mirrors frontend
+# SPLIT_INSET_RATIO in app.js.
+SPLIT_INSET_RATIO = 0.03
+
+
 def split_to_9_tiles(img: Image.Image):
-    """Split a 3×3 grid into 9 PIL images."""
+    """Split a 3×3 grid into 9 PIL images, inset each cell by
+    SPLIT_INSET_RATIO per side to drop neighbour-cell bleed."""
     w, h = img.size
     tw, th = w // 3, h // 3
-    return [
-        img.crop((c * tw, r * th, (c + 1) * tw, (r + 1) * th))
-        for r in range(3) for c in range(3)
-    ]
+    inset_x = int(tw * SPLIT_INSET_RATIO)
+    inset_y = int(th * SPLIT_INSET_RATIO)
+    tiles = []
+    for r in range(3):
+        for c in range(3):
+            x0 = c * tw + inset_x
+            y0 = r * th + inset_y
+            x1 = (c + 1) * tw - inset_x
+            y1 = (r + 1) * th - inset_y
+            tiles.append(img.crop((x0, y0, x1, y1)))
+    return tiles
 
 
 def make_real_sticker_grid(src_path: Path, size: int) -> Image.Image:
@@ -74,6 +118,8 @@ def make_real_sticker_grid(src_path: Path, size: int) -> Image.Image:
     src = Image.open(src_path).convert("RGB")
     print(f"  chroma-keying green background…")
     keyed = chroma_key_green(src)
+    print(f"  eroding 1px to clean edge fringe…")
+    keyed = erode_alpha_1px(keyed)
     tiles = split_to_9_tiles(keyed)
 
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))

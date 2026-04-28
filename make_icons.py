@@ -37,7 +37,7 @@ FONT_BLACK = "/home/ct/.local/share/fonts/NotoSansTC-Black.ttf"
 
 
 def chroma_key_green(img: Image.Image,
-                      threshold: float = 0.20,
+                      threshold: float = 0.18,
                       despill_threshold: float = 0.05) -> Image.Image:
     rgba = img.convert("RGBA")
     px = rgba.load()
@@ -54,15 +54,56 @@ def chroma_key_green(img: Image.Image,
     return rgba
 
 
+def erode_alpha(img: Image.Image, passes: int = 1) -> Image.Image:
+    """N-pixel alpha erosion to clean up the half-alpha green-tinted
+    fringe that chroma keying leaves behind."""
+    rgba = img.convert("RGBA")
+    for _ in range(passes):
+        w, h = rgba.size
+        src_alpha = rgba.split()[3].load()
+        out = rgba.copy()
+        out_px = out.load()
+        for y in range(h):
+            for x in range(w):
+                if src_alpha[x, y] == 0:
+                    continue
+                if (
+                    (x > 0 and src_alpha[x - 1, y] == 0) or
+                    (x < w - 1 and src_alpha[x + 1, y] == 0) or
+                    (y > 0 and src_alpha[x, y - 1] == 0) or
+                    (y < h - 1 and src_alpha[x, y + 1] == 0)
+                ):
+                    r, g, b, _ = out_px[x, y]
+                    out_px[x, y] = (r, g, b, 0)
+        rgba = out
+    return rgba
+
+
+# Inset cell crop to avoid bleed from neighbouring grid cells. Icons
+# render this cell BIG, so any leftover edge fringe is glaringly
+# visible — use a slightly bigger inset than make_og.py's 0.03.
+SPLIT_INSET_RATIO = 0.04
+
+
 def get_hero_face(src_path: Path) -> Image.Image | None:
     if not src_path.is_file():
         return None
     src = Image.open(src_path).convert("RGB")
     keyed = chroma_key_green(src)
+    # 2-pass erode for icons (more aggressive than OG since hero is
+    # zoomed in big and any fringe will be visible)
+    keyed = erode_alpha(keyed, passes=2)
     w, h = keyed.size
     tw, th = w // 3, h // 3
+    inset_x = int(tw * SPLIT_INSET_RATIO)
+    inset_y = int(th * SPLIT_INSET_RATIO)
     r, c = HERO_CELL_INDEX // 3, HERO_CELL_INDEX % 3
-    return keyed.crop((c * tw, r * th, (c + 1) * tw, (r + 1) * th))
+    return keyed.crop((
+        c * tw + inset_x,
+        r * th + inset_y,
+        (c + 1) * tw - inset_x,
+        (r + 1) * th - inset_y,
+    ))
 
 
 def draw_icon_with_hero(hero: Image.Image, size: int,
