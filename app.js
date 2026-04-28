@@ -7,6 +7,100 @@ const $ = (id) => document.getElementById(id);
 // ------------------------------------------------------------------
 // Config
 
+// ==================================================================
+// IndexedDB grid history — stores past 3×3 grids (AI + BYOG) for
+// recall, comparison, star/favorite, and rename. Cap 30 non-starred,
+// unlimited starred.
+// ==================================================================
+const IDB_NAME = "line-sticker-history";
+const IDB_VERSION = 1;
+const IDB_STORE = "generations";
+const HISTORY_NONSTARRED_CAP = 30;
+
+let _idbPromise = null;
+function idbOpen() {
+  if (_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE, { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  return _idbPromise;
+}
+function idbTx(mode, fn) {
+  return idbOpen().then((db) => new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, mode);
+    const store = tx.objectStore(IDB_STORE);
+    const result = fn(store);
+    tx.oncomplete = () => res(result);
+    tx.onerror = () => rej(tx.error);
+  }));
+}
+async function idbSaveGeneration(entry) {
+  return idbTx("readwrite", (s) => s.put(entry));
+}
+async function idbGetGeneration(id) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(id);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbListGenerations() {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction(IDB_STORE).objectStore(IDB_STORE).getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbDeleteGeneration(id) {
+  return idbTx("readwrite", (s) => s.delete(id));
+}
+async function idbUpdateGeneration(id, patch) {
+  const existing = await idbGetGeneration(id);
+  if (!existing) return;
+  return idbSaveGeneration({ ...existing, ...patch });
+}
+
+// Generate a small JPEG thumbnail from a grid blob, for fast list display.
+async function generateThumbnail(blob, size = 220) {
+  const img = await loadImage(URL.createObjectURL(blob));
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fafafa";
+  ctx.fillRect(0, 0, size, size);
+  const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+  const w = img.naturalWidth * scale;
+  const h = img.naturalHeight * scale;
+  ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+  return new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+}
+
+function genHistoryId() {
+  return `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function relativeTime(ts) {
+  const diff = Date.now() - ts;
+  const s = Math.floor(diff / 1000);
+  if (s < 5) return "剛剛";
+  if (s < 60) return `${s} 秒前`;
+  if (s < 3600) return `${Math.floor(s / 60)} 分鐘前`;
+  if (s < 86400) return `${Math.floor(s / 3600)} 小時前`;
+  if (s < 604800) return `${Math.floor(s / 86400)} 天前`;
+  return new Date(ts).toLocaleDateString();
+}
+
 const API_URL_KEY = "line-sticker-api-url";
 const SLOT_CONFIG_KEY = "line-sticker-slots";
 const LINE_TOKEN_KEY = "line-access-token";
@@ -428,6 +522,7 @@ const state = {
   bgRemoved: false,
   removeBackgroundFn: null, // lazy-loaded @imgly/background-removal
   lastGridPng: null,     // raw Gemini 3×3 grid PNG blob (for backup/re-split)
+  currentGridId: null,   // IndexedDB id of the currently-loaded grid
 };
 
 // ------------------------------------------------------------------
@@ -702,6 +797,13 @@ async function generateAll() {
     for (let i = 0; i < binStr.length; i++) binBytes[i] = binStr.charCodeAt(i);
     state.lastGridPng = new Blob([binBytes], { type: result.mimeType });
     showGridDownload();
+    // Persist to history (IndexedDB) — appears in 🅱 carousel + current preview.
+    await saveCurrentGridToHistory("ai", {
+      styleHint: state.styleHint,
+      campaign: state.campaign,
+      withText: state.withText,
+      phrases: result.phrases,
+    });
     const tiles = await splitGrid(gridImg);
     // Gemini gives 9 tiles. LINE only accepts 8 per pack, so we show all
     // 9 and pre-select the first 8 — user can swap which one to drop.
@@ -855,6 +957,13 @@ async function handleGridUpload(file) {
   state.bgRemoved = false;
   $("bg-restore-btn").hidden = true;
   document.body.classList.add("byog-mode");
+
+  // Save the uploaded file as the current grid + add to history.
+  state.lastGridPng = file;
+  await saveCurrentGridToHistory("byog", {
+    fileName: file.name,
+    aspectRatio: img.naturalWidth / img.naturalHeight,
+  });
 
   $("step-preview").hidden = false;
   const grid = $("stickers-grid");
@@ -2217,11 +2326,222 @@ if (langSelect) {
   langSelect.addEventListener("change", (e) => setLang(e.target.value));
 }
 
+// === Grid history (IndexedDB) ===
+
+const currentGridArea = $("current-grid-area");
+const currentGridEmpty = $("current-grid-empty");
+const currentGridImg = $("current-grid-img");
+const currentGridName = $("current-grid-name");
+const currentGridSourceBadge = $("current-grid-source-badge");
+const currentGridTime = $("current-grid-time");
+const currentGridStarBtn = $("current-grid-star");
+const currentGridDownloadBtn = $("current-grid-download");
+const currentGridDeleteBtn = $("current-grid-delete");
+const historySection = $("history-section");
+const historyCards = $("history-cards");
+const historyCount = $("history-count");
+
+function showToast(message) {
+  document.querySelector(".toast")?.remove();
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = message;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 5200);
+}
+function escapeHtmlSafe(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[c]);
+}
+async function saveCurrentGridToHistory(source, metadata) {
+  if (!state.lastGridPng) return;
+  const id = genHistoryId();
+  const thumb = await generateThumbnail(state.lastGridPng);
+  await idbSaveGeneration({
+    id, source, timestamp: Date.now(),
+    gridBlob: state.lastGridPng, thumbnailBlob: thumb,
+    name: null, starred: false,
+    metadata: metadata || {},
+  });
+  state.currentGridId = id;
+  await pruneHistory();
+  await renderCurrentGridUi();
+  await renderHistoryUi();
+}
+async function pruneHistory() {
+  const all = await idbListGenerations();
+  const nonStarred = all.filter((e) => !e.starred);
+  nonStarred.sort((a, b) => b.timestamp - a.timestamp);
+  for (const e of nonStarred.slice(HISTORY_NONSTARRED_CAP)) {
+    await idbDeleteGeneration(e.id);
+    showToast(`📌 已自動清除最舊歷史 (達 ${HISTORY_NONSTARRED_CAP} 筆上限)`);
+  }
+}
+async function renderHistoryUi() {
+  const all = await idbListGenerations();
+  all.sort((a, b) => b.timestamp - a.timestamp);
+  historyCards.innerHTML = "";
+  if (all.length === 0) { historySection.hidden = true; return; }
+  historySection.hidden = false;
+  const ns = all.filter((e) => !e.starred).length;
+  const st = all.filter((e) => e.starred).length;
+  historyCount.textContent =
+    `(${ns}/${HISTORY_NONSTARRED_CAP}` + (st ? ` + ⭐ ${st}` : "") + ")";
+  historyCount.classList.toggle("warn", ns >= HISTORY_NONSTARRED_CAP - 2);
+  for (const e of all) historyCards.appendChild(buildHistoryCard(e));
+}
+function buildHistoryCard(e) {
+  const card = document.createElement("div");
+  card.className = "history-card";
+  if (e.id === state.currentGridId) card.classList.add("selected");
+  const sourceIcon = e.source === "ai" ? "🪄" : "📤";
+  const styleLabel = e.metadata?.styleHint || e.metadata?.fileName ||
+    (e.source === "byog" ? "BYOG" : "?");
+  const displayName = e.name || `${e.source === "ai" ? "AI" : "BYOG"} #${e.id.slice(-4)}`;
+  card.innerHTML = `
+    <div class="history-card-badges">${sourceIcon}${e.starred ? " ⭐" : ""}</div>
+    <img alt="" />
+    <div class="history-card-name" title="${escapeHtmlSafe(displayName)}">${escapeHtmlSafe(displayName)}</div>
+    <div class="history-card-meta">${escapeHtmlSafe(String(styleLabel).slice(0,18))} · ${escapeHtmlSafe(relativeTime(e.timestamp))}</div>
+    <div class="history-card-actions">
+      <button class="act-load" title="載入">↻</button>
+      <button class="act-star" title="${e.starred ? "取消收藏" : "收藏"}">${e.starred ? "⭐" : "☆"}</button>
+      <button class="act-rename" title="重命名">📌</button>
+      <button class="act-download" title="下載">⬇</button>
+      <button class="act-delete" title="刪除">🗑</button>
+    </div>`;
+  card.querySelector("img").src = URL.createObjectURL(e.thumbnailBlob);
+  card.querySelector(".act-load").onclick = () => loadFromHistory(e.id);
+  card.querySelector(".act-star").onclick = async () => {
+    await idbUpdateGeneration(e.id, { starred: !e.starred });
+    if (state.currentGridId === e.id) await renderCurrentGridUi();
+    await renderHistoryUi();
+  };
+  card.querySelector(".act-rename").onclick = async () => {
+    const n = prompt("重新命名（留空 = 取消命名）:", e.name || "");
+    if (n === null) return;
+    await idbUpdateGeneration(e.id, { name: n.trim() || null });
+    if (state.currentGridId === e.id) await renderCurrentGridUi();
+    await renderHistoryUi();
+  };
+  card.querySelector(".act-download").onclick = () => {
+    const url = URL.createObjectURL(e.gridBlob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `grid-${e.name ? e.name.replace(/\W+/g, "_") : e.id}.png`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  };
+  card.querySelector(".act-delete").onclick = async () => {
+    if (!confirm("刪除這張 grid?")) return;
+    await idbDeleteGeneration(e.id);
+    if (state.currentGridId === e.id) {
+      state.currentGridId = null;
+      state.lastGridPng = null;
+      await renderCurrentGridUi();
+    }
+    await renderHistoryUi();
+  };
+  return card;
+}
+async function renderCurrentGridUi() {
+  if (!state.currentGridId) {
+    currentGridArea.hidden = true;
+    currentGridEmpty.hidden = false;
+    return;
+  }
+  const e = await idbGetGeneration(state.currentGridId);
+  if (!e) {
+    state.currentGridId = null;
+    currentGridArea.hidden = true;
+    currentGridEmpty.hidden = false;
+    return;
+  }
+  currentGridArea.hidden = false;
+  currentGridEmpty.hidden = true;
+  currentGridImg.src = URL.createObjectURL(e.gridBlob);
+  currentGridSourceBadge.textContent = e.source === "ai" ? "🪄 AI 生成" : "📤 自上傳";
+  currentGridName.value = e.name || "";
+  currentGridName.placeholder = e.metadata?.styleHint || e.metadata?.fileName || "(未命名 — 點此重命名)";
+  const meta = [];
+  meta.push(relativeTime(e.timestamp));
+  if (e.metadata?.styleHint) meta.push(e.metadata.styleHint);
+  if (e.metadata?.campaign) meta.push(e.metadata.campaign);
+  currentGridTime.textContent = meta.join(" · ");
+  currentGridStarBtn.textContent = e.starred ? "⭐ 已收藏" : "☆ 收藏";
+}
+currentGridName?.addEventListener("change", async (ev) => {
+  if (!state.currentGridId) return;
+  await idbUpdateGeneration(state.currentGridId, { name: ev.target.value.trim() || null });
+  await renderHistoryUi();
+});
+currentGridStarBtn?.addEventListener("click", async () => {
+  if (!state.currentGridId) return;
+  const e = await idbGetGeneration(state.currentGridId);
+  await idbUpdateGeneration(state.currentGridId, { starred: !e.starred });
+  await renderCurrentGridUi();
+  await renderHistoryUi();
+});
+currentGridDownloadBtn?.addEventListener("click", async () => {
+  if (!state.currentGridId) return;
+  const e = await idbGetGeneration(state.currentGridId);
+  const url = URL.createObjectURL(e.gridBlob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `grid-${e.name || e.id}.png`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+});
+currentGridDeleteBtn?.addEventListener("click", async () => {
+  if (!state.currentGridId) return;
+  if (!confirm("刪除目前這張 grid?")) return;
+  await idbDeleteGeneration(state.currentGridId);
+  state.currentGridId = null;
+  state.lastGridPng = null;
+  await renderCurrentGridUi();
+  await renderHistoryUi();
+});
+async function loadFromHistory(id) {
+  const e = await idbGetGeneration(id);
+  if (!e) return;
+  state.currentGridId = id;
+  state.lastGridPng = e.gridBlob;
+  state.tiles = [];
+  state.bgRemoved = false;
+  if (e.metadata?.styleHint) state.styleHint = e.metadata.styleHint;
+  if (e.metadata?.campaign !== undefined) state.campaign = e.metadata.campaign;
+  if (e.metadata?.withText !== undefined) state.withText = e.metadata.withText;
+  const img = await loadImage(URL.createObjectURL(e.gridBlob));
+  const tiles = await splitGrid(img);
+  $("step-preview").hidden = false;
+  const grid = $("stickers-grid");
+  grid.innerHTML = "";
+  for (let i = 0; i < GRID_SIZE; i++) grid.appendChild(buildPlaceholderCell(i));
+  for (let i = 0; i < GRID_SIZE; i++) {
+    const tile = {
+      canvas: tiles[i], transparent: false,
+      phrase: e.metadata?.phrases?.[i] || "",
+      busy: false, included: i < PACK_SIZE,
+    };
+    state.tiles.push(tile);
+    renderTileIntoCell(i, tile);
+  }
+  refreshSelectionStatus();
+  $("step-download").hidden = false;
+  $("bg-restore-btn").hidden = true;
+  await renderCurrentGridUi();
+  await renderHistoryUi();
+  $("step-byog").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 refreshEstimate();
 refreshSlotStatus();
 // step-config is always visible now (so BYOG users can use settings dialog
 // to copy prompt for Gemini), so eager-load campaigns at boot.
 ensureCampaignsLoaded().then(renderCampaignPicker);
+// Eager-load grid history (will show 🅱 carousel + last loaded grid).
+renderCurrentGridUi();
+renderHistoryUi();
 
 // LINE rules acknowledgment — gate both upload boxes until user checks.
 const RULES_ACK_KEY = "line-sticker-rules-acked";

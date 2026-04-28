@@ -250,6 +250,191 @@ main {
   padding: 1rem 1.25rem 2rem;
 }
 
+/* === Current grid preview (in 🅱) === */
+#current-grid-area {
+  margin-bottom: 1rem;
+}
+.current-grid-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+#current-grid-source-badge {
+  background: var(--line-green-soft);
+  color: var(--line-green-hover);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+#current-grid-name {
+  flex: 1;
+  min-width: 12rem;
+  background: #fafdf9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: var(--text);
+}
+#current-grid-name:focus {
+  outline: none;
+  border-color: var(--line-green);
+  box-shadow: 0 0 0 3px var(--line-green-soft);
+}
+.muted { color: var(--muted); font-size: 0.78rem; }
+.current-grid-stage {
+  background: repeating-conic-gradient(#f4f4f4 0% 25%, #ffffff 0% 50%) 50% / 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.6rem;
+}
+.current-grid-stage img {
+  max-width: 100%;
+  max-height: 320px;
+  display: block;
+}
+.current-grid-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.current-grid-actions button { font-size: 0.85rem; padding: 0.5rem 0.85rem; }
+#current-grid-empty {
+  background: var(--bg-tint);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: center;
+  margin-bottom: 0.6rem;
+}
+
+/* === History carousel === */
+#history-section {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border);
+}
+.history-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  flex-wrap: wrap;
+}
+.history-header h3 { margin: 0; font-size: 1rem; }
+#history-count.warn { color: #c0392b; font-weight: 700; }
+
+.history-cards {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.4rem 0.2rem 0.6rem;
+  scrollbar-width: thin;
+}
+.history-cards::-webkit-scrollbar { height: 8px; }
+.history-cards::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+.history-card {
+  flex: 0 0 150px;
+  background: #fff;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s ease;
+}
+.history-card:hover { border-color: var(--line-green); }
+.history-card.selected {
+  border-color: var(--line-green);
+  box-shadow: 0 0 0 2px var(--line-green-soft);
+}
+.history-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--bg-tint);
+}
+.history-card-badges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  gap: 2px;
+  font-size: 0.78rem;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+.history-card-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-card-meta {
+  font-size: 0.7rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-card-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+.history-card-actions button {
+  flex: 1;
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 0;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text);
+}
+.history-card-actions button:hover {
+  background: var(--line-green-soft);
+  border-color: var(--line-green);
+}
+
+/* Toast for eviction notification */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(31, 45, 36, 0.95);
+  color: #fff;
+  padding: 0.7rem 1.2rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  z-index: 1000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  animation: toast-in 0.3s ease, toast-out 0.3s ease 4.7s forwards;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateX(-50%) translateY(20px); }
+}
+
 .path-picker-hint {
   text-align: center;
   margin: 0.5rem 0 1rem;
