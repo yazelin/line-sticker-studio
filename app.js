@@ -621,7 +621,7 @@ async function generateAll() {
   if (styleHintSel.value === "__custom__") {
     const customStyle = $("style-custom-input")?.value.trim();
     if (!customStyle || customStyle.length < 8) {
-      alert("請填入至少 8 個字的英文風格描述（或挑一個內建的）");
+      alert("請填入至少 8 個字的風格描述（中英文皆可，或挑一個內建的）");
       return;
     }
     state.styleHint = customStyle;
