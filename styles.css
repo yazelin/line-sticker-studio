@@ -707,10 +707,43 @@ main {
 }
 .campaign-card .deadline.urgent { color: #c0392b; font-weight: 700; }
 .campaign-card .deadline.expired { color: #999; text-decoration: line-through; }
-.campaign-card.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  pointer-events: none;
+.campaign-card.expired-card {
+  opacity: 0.7;
+  background: #f5f5f5;
+  border-color: #ddd;
+}
+.campaign-card.expired-card:hover {
+  opacity: 0.9;
+  border-color: #b8b8b8;
+}
+.campaign-card.expired-card.selected {
+  opacity: 1;
+  border-color: #999;
+  background: #ececec;
+}
+.campaign-card .expired-badge {
+  margin-top: 4px;
+  display: inline-block;
+  padding: 2px 6px;
+  background: #555;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.campaign-active.is-expired {
+  border-color: #999;
+  background: #fafafa;
+}
+.campaign-active .expired-warn {
+  margin: -0.3rem -0.5rem 0.5rem;
+  padding: 6px 10px;
+  background: #fff4d6;
+  border-left: 3px solid #d4a24a;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  color: #6e4c10;
 }
 .campaign-active {
   margin-top: 0.6rem;

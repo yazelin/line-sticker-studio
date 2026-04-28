@@ -2018,16 +2018,22 @@ function buildCampaignCard(camp) {
       ? `已截止 ${camp.submitDeadline}`
       : `投稿截止 ${camp.submitDeadline}（剩 ${daysLeft} 天）`;
     btn.dataset.cid = camp.id;
-    if (expired) btn.classList.add("disabled");
+    // Expired campaigns stay selectable — generation is still fun even
+    // if you can't submit. Visual fading + clear "已過期" badge does the
+    // talking; we add a warning banner in refreshCampaignActive too.
+    if (expired) btn.classList.add("expired-card");
+    const expiredBadge = expired
+      ? `<div class="expired-badge">已過期・僅供把玩</div>`
+      : "";
     btn.innerHTML = `
-      <div class="name">${escapeHtml(camp.label)}</div>
+      <div class="name">${escapeHtml(camp.label)}${expired ? " 🕰" : ""}</div>
       <div class="blurb">${escapeHtml(camp.blurb)}</div>
       <div class="deadline ${deadlineCls}">${escapeHtml(deadlineLabel)}</div>
+      ${expiredBadge}
     `;
   }
 
   btn.addEventListener("click", () => {
-    if (btn.classList.contains("disabled")) return;
     selectCampaign(btn.dataset.cid || null);
   });
 
@@ -2078,10 +2084,18 @@ function refreshCampaignActive() {
     campaignActive.innerHTML = "";
     return;
   }
+  const expired = camp.submitDeadline < todayISO();
   campaignActive.hidden = false;
+  campaignActive.classList.toggle("is-expired", expired);
+  const expiredWarn = expired
+    ? `<div class="expired-warn">⚠ 此活動已於 ${escapeHtml(camp.submitDeadline)} 截止徵稿 — 仍可用此 prompt 產出貼圖把玩 / 留念，但 LINE 不再收稿到這個特輯。</div>`
+    : "";
   campaignActive.innerHTML = `
-    <strong>📌 已對準：${escapeHtml(camp.fullName)}</strong><br>
-    投稿時 LINE 編輯器選 →「<strong>${escapeHtml(camp.submitTag)}</strong>」<br>
+    ${expiredWarn}
+    <strong>📌 已對準：${escapeHtml(camp.fullName)}${expired ? " 🕰" : ""}</strong><br>
+    ${expired
+      ? `(已過期，原投稿 tag 為「<strong>${escapeHtml(camp.submitTag)}</strong>」)`
+      : `投稿時 LINE 編輯器選 →「<strong>${escapeHtml(camp.submitTag)}</strong>」`}<br>
     投稿截止：${escapeHtml(camp.submitDeadline)}・Banner 期：${escapeHtml(camp.bannerPeriod)}<br>
     <a href="${escapeAttr(camp.articleUrl)}" target="_blank" rel="noopener">📄 看完整徵稿規則</a>
   `;
