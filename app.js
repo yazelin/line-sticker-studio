@@ -14,6 +14,156 @@ const LINE_VERIFIER_KEY = "line-pkce-verifier";
 const LINE_STATE_KEY = "line-oauth-state";
 const LINE_CHANNEL_ID = "2009916047";
 const DEFAULT_API_URL = "https://line-sticker-gemini.yazelinj303.workers.dev";
+const LANG_KEY = "line-sticker-lang";
+
+// ------------------------------------------------------------------
+// i18n — minimal multi-language for the most visible UI strings.
+// Keys are by element id with `data-i18n` attribute, set in HTML.
+// Languages: zh-TW (default), zh-CN, en, ja, ko.
+
+const I18N = {
+  brand_subtitle: {
+    "zh-TW": "上傳一張角色圖 → AI 產一整組貼圖 → 下載 ZIP 直接上架到 LINE Creators Market",
+    "zh-CN": "上传一张角色图 → AI 产一整组贴图 → 下载 ZIP 直接上架到 LINE Creators Market",
+    "en": "Upload one character image → AI generates a full sticker pack → download ZIP, ready for LINE Creators Market",
+    "ja": "1 枚のキャラ画像をアップロード → AI がスタンプ一式を生成 → ZIP をダウンロードして LINE Creators Market へ",
+    "ko": "캐릭터 이미지 한 장 업로드 → AI가 스티커 팩 생성 → ZIP 다운로드 → LINE Creators Market 업로드",
+  },
+  step_a_title: {
+    "zh-TW": "🅰 主路徑：上傳角色圖讓 AI 產（每天 3 次免費，需 LINE 登入）",
+    "zh-CN": "🅰 主路径：上传角色图让 AI 产（每天 3 次免费，需 LINE 登入）",
+    "en": "🅰 Main path: upload a character image, let AI generate (3 free/day, LINE login required)",
+    "ja": "🅰 メイン: キャラ画像をアップ、AI に生成させる（1日3回無料、LINE ログイン必要）",
+    "ko": "🅰 메인 경로: 캐릭터 업로드 → AI 생성 (하루 3회 무료, LINE 로그인 필요)",
+  },
+  step_b_title: {
+    "zh-TW": "🅱 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）",
+    "zh-CN": "🅱 替代路径：直接上传 3×3 图（省 API、自己跑 Gemini）",
+    "en": "🅱 Alt path: upload your own 3×3 grid (saves API cost, run Gemini yourself)",
+    "ja": "🅱 代替: 自分で作った 3×3 グリッドをアップ (API節約、Geminiを自分で実行)",
+    "ko": "🅱 대체 경로: 직접 만든 3×3 그리드 업로드 (API 절약, Gemini 직접 실행)",
+  },
+  step_config_title: {
+    "zh-TW": "② 選樣式 + 短語（兩條路徑共用）",
+    "zh-CN": "② 选样式 + 短语（两条路径共用）",
+    "en": "② Style + phrases (shared by both paths)",
+    "ja": "② スタイル + フレーズ (両経路共通)",
+    "ko": "② 스타일 + 문구 (양 경로 공통)",
+  },
+  step_preview_title: {
+    "zh-TW": "③ 預覽 + 去背",
+    "zh-CN": "③ 预览 + 去背",
+    "en": "③ Preview + Background Removal",
+    "ja": "③ プレビュー + 背景除去",
+    "ko": "③ 미리보기 + 배경 제거",
+  },
+  step_download_title: {
+    "zh-TW": "④ 下載 + 上架",
+    "zh-CN": "④ 下载 + 上架",
+    "en": "④ Download + Submit",
+    "ja": "④ ダウンロード + アップロード",
+    "ko": "④ 다운로드 + 업로드",
+  },
+  generate_btn: {
+    "zh-TW": "開始生成貼圖",
+    "zh-CN": "开始生成贴图",
+    "en": "Generate Stickers",
+    "ja": "スタンプを生成",
+    "ko": "스티커 생성",
+  },
+  bg_remove_btn: {
+    "zh-TW": "全部去背（chroma key）",
+    "zh-CN": "全部去背（chroma key）",
+    "en": "Remove all backgrounds (chroma key)",
+    "ja": "全部の背景を除去 (chroma key)",
+    "ko": "모든 배경 제거 (chroma key)",
+  },
+  bg_restore_btn: {
+    "zh-TW": "還原綠底",
+    "zh-CN": "还原绿底",
+    "en": "Restore green bg",
+    "ja": "緑背景に戻す",
+    "ko": "녹색 배경 복원",
+  },
+  download_grid_btn: {
+    "zh-TW": "下載原始 grid",
+    "zh-CN": "下载原始 grid",
+    "en": "Download raw grid",
+    "ja": "元のグリッドをダウンロード",
+    "ko": "원본 그리드 다운로드",
+  },
+  download_zip_btn: {
+    "zh-TW": "下載完整 ZIP（含全部貼圖 + main + tab + 說明）",
+    "zh-CN": "下载完整 ZIP（含全部贴图 + main + tab + 说明）",
+    "en": "Download full ZIP (all stickers + main + tab + README)",
+    "ja": "完全な ZIP をダウンロード (全スタンプ + main + tab + 説明)",
+    "ko": "전체 ZIP 다운로드 (모든 스티커 + main + tab + README)",
+  },
+  open_camera_btn: {
+    "zh-TW": "📷 用相機現拍",
+    "zh-CN": "📷 用相机现拍",
+    "en": "📷 Use camera",
+    "ja": "📷 カメラを使う",
+    "ko": "📷 카메라 사용",
+  },
+  upload_or: {
+    "zh-TW": "或", "zh-CN": "或", "en": "or", "ja": "または", "ko": "또는",
+  },
+  drop_zone_text: {
+    "zh-TW": "點擊或拖曳圖片到這裡",
+    "zh-CN": "点击或拖曳图片到这里",
+    "en": "Click or drop an image here",
+    "ja": "クリックまたは画像をドロップ",
+    "ko": "클릭하거나 이미지를 드롭",
+  },
+  grid_drop_zone_text: {
+    "zh-TW": "點擊或拖曳「3×3 圖」到這裡",
+    "zh-CN": "点击或拖曳「3×3 图」到这里",
+    "en": "Click or drop your 3×3 grid here",
+    "ja": "3×3 グリッドをクリックまたはドロップ",
+    "ko": "3×3 그리드를 클릭하거나 드롭",
+  },
+  auth_login_btn: {
+    "zh-TW": "用 LINE 登入解鎖 AI 生成",
+    "zh-CN": "用 LINE 登入解锁 AI 生成",
+    "en": "Login with LINE to unlock AI generation",
+    "ja": "LINE でログインして AI 生成を解放",
+    "ko": "LINE으로 로그인하여 AI 생성 해제",
+  },
+  auth_logout: {
+    "zh-TW": "登出", "zh-CN": "登出", "en": "Log out", "ja": "ログアウト", "ko": "로그아웃",
+  },
+};
+
+function getLang() {
+  const stored = localStorage.getItem(LANG_KEY);
+  if (stored && I18N.brand_subtitle[stored]) return stored;
+  const nav = (navigator.language || "zh-TW").toLowerCase();
+  if (nav.startsWith("zh-tw") || nav.startsWith("zh-hant")) return "zh-TW";
+  if (nav.startsWith("zh")) return "zh-CN";
+  if (nav.startsWith("ja")) return "ja";
+  if (nav.startsWith("ko")) return "ko";
+  if (nav.startsWith("en")) return "en";
+  return "zh-TW";
+}
+let currentLang = getLang();
+function t(key) {
+  return I18N[key]?.[currentLang] || I18N[key]?.["en"] || key;
+}
+function applyI18n() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.dataset.i18n;
+    const v = t(key);
+    if (v) el.textContent = v;
+  });
+}
+function setLang(lang) {
+  if (!I18N.brand_subtitle[lang]) return;
+  currentLang = lang;
+  localStorage.setItem(LANG_KEY, lang);
+  document.documentElement.lang = lang;
+  applyI18n();
+}
 const ESTIMATED_GRID_SECONDS = 50; // per 3×3 grid
 // LINE Creators Market accepts only 8/16/24/32/40 stickers per pack —
 // 8 is the minimum we ship. Gemini gives us a 3×3 grid (9 tiles), so
@@ -2020,6 +2170,15 @@ function refreshAuthUi() {
 
 // ------------------------------------------------------------------
 // Init
+
+// Apply i18n on boot
+document.documentElement.lang = currentLang;
+applyI18n();
+const langSelect = $("lang-select");
+if (langSelect) {
+  langSelect.value = currentLang;
+  langSelect.addEventListener("change", (e) => setLang(e.target.value));
+}
 
 refreshEstimate();
 refreshSlotStatus();

@@ -61,10 +61,20 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<div class="lang-switcher">
+  <select id="lang-select" aria-label="Language">
+    <option value="zh-TW">繁中</option>
+    <option value="zh-CN">简中</option>
+    <option value="en">EN</option>
+    <option value="ja">日本語</option>
+    <option value="ko">한국어</option>
+  </select>
+</div>
+
 <div id="auth-widget" class="auth-widget" hidden>
   <button id="auth-login-btn" class="auth-login" hidden>
     <svg class="btn-icon"><use href="#i-sparkle"/></svg>
-    用 LINE 登入解鎖 AI 生成
+    <span data-i18n="auth_login_btn">用 LINE 登入解鎖 AI 生成</span>
   </button>
   <div id="auth-user" class="auth-user" hidden>
     <img id="auth-avatar" alt="" />
@@ -72,8 +82,8 @@
       <div class="auth-name" id="auth-name"></div>
       <div class="auth-quota" id="auth-quota"></div>
     </div>
-    <button id="auth-admin-reset-btn" class="auth-admin-reset" title="Admin: 砍掉今天的 quota" hidden>🔧</button>
-    <button id="auth-logout-btn" class="auth-logout" title="登出">登出</button>
+    <button id="auth-admin-reset-btn" class="auth-admin-reset" title="Admin: reset today's quota" hidden>🔧</button>
+    <button id="auth-logout-btn" class="auth-logout" title="Log out" data-i18n="auth_logout">登出</button>
   </div>
 </div>
 <header>
@@ -81,7 +91,7 @@
     <span class="brand-mark">LINE</span>
     貼圖製造機
   </h1>
-  <p class="tagline">上傳一張角色圖 → AI 產一整組貼圖 → 下載 ZIP 直接上架到 LINE Creators Market</p>
+  <p class="tagline" data-i18n="brand_subtitle">上傳一張角色圖 → AI 產一整組貼圖 → 下載 ZIP 直接上架到 LINE Creators Market</p>
 
   <div class="howto">
     <div class="howto-step">
@@ -130,7 +140,7 @@
   <p class="path-picker-hint">① 選一條輸入路徑（A 主流 / B 省 API），然後到 ② 設定樣式</p>
 
   <section class="card" id="step-upload">
-    <h2>🅰 主路徑：上傳角色圖讓 AI 產（每天 3 次免費，需 LINE 登入）</h2>
+    <h2 data-i18n="step_a_title">🅰 主路徑：上傳角色圖讓 AI 產（每天 3 次免費，需 LINE 登入）</h2>
     <p class="hint">建議：主體清楚、單純背景的正方形圖。AI 會學起來、一次產 8 張同角色不同姿勢/表情的貼圖（LINE 規定的最小套組）。</p>
     <p class="hint coffee-hint">
       <svg class="inline-icon"><use href="#i-coffee"/></svg>
@@ -141,11 +151,11 @@
     <label class="upload-box" id="drop-zone">
       <input type="file" id="file-input" accept="image/*" hidden />
       <svg class="upload-icon"><use href="#i-upload"/></svg>
-      <span>點擊或拖曳圖片到這裡</span>
+      <span data-i18n="drop_zone_text">點擊或拖曳圖片到這裡</span>
     </label>
     <div class="upload-or-row">
-      <span class="or-divider">或</span>
-      <button type="button" class="ghost" id="open-camera-btn">
+      <span class="or-divider" data-i18n="upload_or">或</span>
+      <button type="button" class="ghost" id="open-camera-btn" data-i18n="open_camera_btn">
         📷 用相機現拍
       </button>
     </div>
@@ -160,7 +170,7 @@
   </section>
 
   <section class="card" id="step-byog">
-    <h2>🅱 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）</h2>
+    <h2 data-i18n="step_b_title">🅱 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）</h2>
     <p class="hint">已經自己用 Gemini / ChatGPT 跑出 3×3 圖了？<strong>不用先上傳角色圖</strong>，直接傳 3×3 圖，我們就幫你切 8 張、打包 ZIP。</p>
 
     <details class="tip-box">
@@ -179,12 +189,12 @@
     <label class="upload-box compact" id="grid-drop-zone">
       <input type="file" id="grid-file-input" accept="image/*" hidden />
       <svg class="upload-icon"><use href="#i-upload"/></svg>
-      <span>點擊或拖曳「3×3 圖」到這裡</span>
+      <span data-i18n="grid_drop_zone_text">點擊或拖曳「3×3 圖」到這裡</span>
     </label>
   </section>
 
   <section class="card" id="step-config">
-    <h2>② 選樣式 + 短語（兩條路徑共用）</h2>
+    <h2 data-i18n="step_config_title">② 選樣式 + 短語（兩條路徑共用）</h2>
 
     <p class="hint">本工具固定產出 LINE 接受的最小套組「<strong>8 張</strong>」，1 次 AI 呼叫就完成（約 50 秒、~USD 0.04）。要更多張請複製 prompt 自己跑。</p>
 
@@ -232,7 +242,7 @@
 
     <button class="primary" id="generate-btn">
       <svg class="btn-icon"><use href="#i-sparkle"/></svg>
-      開始生成貼圖
+      <span data-i18n="generate_btn">開始生成貼圖</span>
     </button>
 
     <div id="gen-progress" hidden>
@@ -282,21 +292,21 @@
   </dialog>
 
   <section class="card" id="step-preview" hidden>
-    <h2>③ 預覽 + 去背</h2>
+    <h2 data-i18n="step_preview_title">③ 預覽 + 去背</h2>
     <p class="hint">點任一張可以重抽（仍會耗 API 呼叫）。LINE 上架需要透明背景，按下面按鈕在你的瀏覽器內跑去背模型，圖片不會上傳到任何伺服器。</p>
 
     <div class="preview-actions">
       <button class="primary" id="bg-remove-btn">
         <svg class="btn-icon"><use href="#i-scissors"/></svg>
-        全部去背（chroma key）
+        <span data-i18n="bg_remove_btn">全部去背（chroma key）</span>
       </button>
       <button class="ghost" id="bg-restore-btn" hidden>
         <svg class="btn-icon"><use href="#i-refresh"/></svg>
-        還原綠底
+        <span data-i18n="bg_restore_btn">還原綠底</span>
       </button>
       <button class="ghost" id="download-grid-btn" hidden title="下載 Gemini 原始 3×3 grid PNG（備份用、之後可走 BYOG 重切）">
         <svg class="btn-icon"><use href="#i-download"/></svg>
-        下載原始 grid
+        <span data-i18n="download_grid_btn">下載原始 grid</span>
       </button>
     </div>
 
@@ -311,7 +321,7 @@
   </section>
 
   <section class="card" id="step-download" hidden>
-    <h2>④ 下載 + 上架</h2>
+    <h2 data-i18n="step_download_title">④ 下載 + 上架</h2>
 
     <button class="primary big" id="download-zip-btn">
       <svg class="btn-icon"><use href="#i-zip"/></svg>
