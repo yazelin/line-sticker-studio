@@ -23,3 +23,7 @@ Thumbs.db
 /tmp/
 test-output/
 *.zip
+
+# Per-run intermediate from .github/workflows/check-line-campaigns.yml —
+# generated locally for the PR body, never committed.
+.github/campaign-pr-body.md

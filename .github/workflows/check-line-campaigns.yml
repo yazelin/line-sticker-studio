@@ -1,0 +1,51 @@
+name: Check LINE campaigns
+
+on:
+  schedule:
+    # 每週一 09:00 Asia/Taipei (= 01:00 UTC)
+    - cron: "0 1 * * 1"
+  workflow_dispatch: {} # 允許手動觸發測試
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run campaign check script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/check-line-campaigns.mjs
+
+      - name: Bail out if no changes
+        id: diff
+        run: |
+          if git diff --quiet worker/src/campaigns.json; then
+            echo "no changes"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "campaigns.json changed"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR with new campaigns
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: bot/new-line-campaigns
+          delete-branch: true
+          commit-message: "feat(campaigns): auto-detected new LINE Creators Market campaign(s)"
+          title: "🤖 New LINE campaign(s) detected — review and add prompt overrides"
+          body-path: .github/campaign-pr-body.md
+          add-paths: worker/src/campaigns.json
+          labels: |
+            campaigns
+            bot

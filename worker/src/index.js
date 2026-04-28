@@ -90,106 +90,15 @@ const ACTION_FOR_PHRASE = {
   "不要": "arms crossed in an X, frowning hard",
 };
 
-// LINE Creators Market themed-campaign presets. Updating: when LINE
-// publishes new campaigns, append entries here. Frontend reads this via
-// GET /campaigns; expired entries are flagged but not removed (callers
-// decide how to display them).
+// LINE Creators Market themed-campaign presets. Source of truth lives
+// in `./campaigns.json` so a GitHub Action can append new entries via
+// PR without touching JS. Each campaign overrides the relevant prompt
+// knobs and injects a CAMPAIGN REQUIREMENT block into the assembled
+// prompt so Gemini's 8/9 tiles align with LINE's editorial team's brief.
 //
-// Each campaign overrides the relevant prompt knobs and injects a
-// CAMPAIGN REQUIREMENT block into the assembled prompt so Gemini's 8/9
-// tiles align with what LINE's editorial team is looking for.
-const CAMPAIGNS = [
-  {
-    id: "no_text",
-    label: "無字浮誇",
-    fullName: "無字浮誇貼圖特輯",
-    submitTag: "無字浮誇貼圖特輯",
-    submitDeadline: "2026-07-12",
-    bannerPeriod: "未公布",
-    articleUrl: "https://creator-mag-tw.weblog.to/archives/30678325.html",
-    blurb: "整組純表情/肢體傳達情緒、絕對不能有字。",
-    forceWithText: false,
-    forceStyleHint: null,
-    extraPromptInstruction:
-      "CAMPAIGN OVERRIDE — 「無字浮誇貼圖特輯」: This whole pack must convey emotion ENTIRELY through facial expressions and body language. ABSOLUTELY NO TEXT, LETTERS, NUMBERS, EMOJI, OR PUNCTUATION anywhere in any cell — checked strictly. Each pose must be theatrical and exaggerated, the kind that reads at a glance with zero captions. Vary head tilt, eye direction, hand position, and body posture across all 9 cells.",
-  },
-  {
-    id: "watery",
-    label: "水水（水亮亮）",
-    fullName: "水水貼圖",
-    submitTag: "水水貼圖",
-    submitDeadline: "2026-06-14",
-    bannerPeriod: "2026/06/17 ~ 06/30",
-    articleUrl: "https://creator-mag-tw.weblog.to/archives/30606764.html",
-    blurb: "Q 萌、果凍亮亮反光、大眼水汪汪。",
-    forceWithText: null,
-    forceStyleHint: "cute_chibi",
-    extraPromptInstruction:
-      "CAMPAIGN OVERRIDE — 「水水貼圖」: Every sticker must look glossy/dewy/translucent — like wet jelly or water droplets. Always render the eyes BIG, ROUND, GLASSY, with a bright white sparkle highlight (or 2). Skin/character surface should have a soft sheen, almost candy-like. Use a rounded, plump, bouncy character silhouette. Pastel palette with cool highlights. The whole pack should feel kawaii, dewy, three-dimensional.",
-  },
-  {
-    id: "tears",
-    label: "眼淚製造機（表情貼專用，非貼圖）",
-    fullName: "眼淚製造機表情貼特輯",
-    submitTag: "眼淚製造機表情貼特輯",
-    submitDeadline: "2026-06-14",
-    bannerPeriod: "2026/06/22 ~ 07/05",
-    articleUrl: "https://creator-mag-tw.weblog.to/archives/30606762.html",
-    blurb: "⚠ 這個特輯只收「表情貼」(sticon) 類型，本工具產的是「貼圖」(370×320) 不適用。prompt 仍可用作哭哭主題參考。",
-    forceWithText: null,
-    forceStyleHint: null,
-    phrasePoolOverride: [
-      "哭哭", "嗚嗚", "想哭", "委屈", "淚崩",
-      "笑到流淚", "我錯了", "對不起", "求求你", "別這樣",
-      "心碎了", "抱抱", "好難過", "別走", "嗚嗚嗚",
-    ],
-    extraPromptInstruction:
-      "CAMPAIGN OVERRIDE — 「眼淚製造機表情貼特輯」: EVERY single cell MUST clearly show tears or watery eyes. Vary the type — choose from: full sobbing tear streams down both cheeks, single tear running down one cheek, eyes welling up shimmering with unshed tears, laugh-tears at the corners of squeezed-shut eyes, comical waterfall tears spraying out, sparkly cute tear dots. Tears should be obvious even at chat-thumbnail size. The 9 cells must vary the tear type AND the matching emotion (sad / overwhelmed / laughing / sorry / pleading) — no two cells with identical tear placement.",
-  },
-  {
-    id: "big_face",
-    label: "大臉攻擊",
-    fullName: "大臉攻擊！",
-    submitTag: "大臉攻擊！",
-    submitDeadline: "2026-05-10",
-    bannerPeriod: "2026/05/13 ~ 05/26",
-    articleUrl: "https://creator-mag-tw.weblog.to/archives/30606761.html",
-    blurb: "臉佔畫面 80%+，大頭塞滿格子或像貼到螢幕上。",
-    forceWithText: null,
-    forceStyleHint: null,
-    extraPromptInstruction:
-      "CAMPAIGN OVERRIDE — 「大臉攻擊！」: TIGHT FACE CLOSE-UP framing for every single cell. The face must occupy 80%+ of the cell area — crop just above the forehead and just below the chin, with ears touching or going off the edges. NO body, NO hands, NO scenery. The character's face should look like it is pressed up against a window — alternatively, draw the face filling the entire frame edge to edge. Every cell uses a different exaggerated facial expression. Mouth, eyes, and brows are the entire performance.",
-  },
-  // ---- Expired (kept for record; frontend hides past-deadline entries) ----
-  {
-    id: "abstract_comedy",
-    label: "抽象搞笑研究所",
-    fullName: "抽象搞笑研究所貼圖特輯",
-    submitTag: "抽象搞笑研究所貼圖特輯",
-    submitDeadline: "2026-03-08",
-    bannerPeriod: "2026/03/11 ~ 03/24",
-    articleUrl: "https://creator-mag-tw.weblog.to/archives/30055665.html",
-    blurb: "醜萌、五官抽象、比例不對稱、筆觸崩壞。",
-    forceWithText: null,
-    forceStyleHint: null,
-    extraPromptInstruction:
-      "CAMPAIGN OVERRIDE — 「抽象搞笑研究所貼圖特輯」: Off-kilter, ugly-cute, deliberately bad-on-purpose drawing style. Asymmetric features (one eye much bigger than the other), off-balance proportions, intentionally wobbly lines, exaggerated to the point of looking broken. Think marker-on-napkin doodles, but each one absurdly funny. NOT polished — the broken-ness IS the appeal.",
-  },
-  {
-    id: "taiwan_flavor",
-    label: "台味大出巡",
-    fullName: "台味大出巡（神明也瘋狂 / 台灣感性）",
-    submitTag: "神明也瘋狂 / 台灣感性",
-    submitDeadline: "2026-04-02",
-    bannerPeriod: "2026/04/16 ~ 04/29",
-    articleUrl: "https://creator-mag-tw.weblog.to/archives/30416643.html",
-    blurb: "台灣神明 / 日常文化感。固定價 NT$60。",
-    forceWithText: null,
-    forceStyleHint: null,
-    extraPromptInstruction:
-      "CAMPAIGN OVERRIDE — 「台味大出巡」: Strong Taiwanese cultural flavor in every cell — choose ONE of: (A) deities/folk-religion characters (Mazu, Lord Guan, Tudigong, lion dancers, Bā jiā jiàng) doing modern relatable things; (B) Taiwanese daily-life moments (boba tea, scooter culture, night-market food, betel-nut stand vibe, electric fans in hot weather, cartoony 7-11 vibes). Keep the look colorful and inviting.",
-  },
-];
+// Frontend reads this via GET /campaigns; expired entries are flagged
+// but kept in the list (frontend decides how to display them).
+import CAMPAIGNS from "./campaigns.json";
 
 function campaignsManifest() {
   return CAMPAIGNS.map((c) => ({
