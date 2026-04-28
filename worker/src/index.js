@@ -427,9 +427,13 @@ function buildPrompt({ nine, styleHint, withText, campaign }) {
 
   return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square LINE-style stickers featuring the same character from the reference image. Each tile is ONE complete chat sticker.
 
-STYLE: ${style}
+STYLE (DOMINANT — overrides the source image's medium):
+${style}
 
-CHARACTER CONSISTENCY: every tile shows the SAME identifiable character from the reference — same face, hair, clothing, color palette, body proportions. Only the expression and pose change between tiles.
+This style applies to ALL 9 tiles. If the user provided a photo and the style says "anime / 3D / pixel / watercolor / etc", TRANSFORM the photo into that medium — do NOT keep it photo-realistic. If the style says "match" then keep the source medium; otherwise the style above wins. Color palette, line work, shading technique should all follow the STYLE block, not the source.
+
+CHARACTER IDENTITY (persists across all 9 tiles, but is RE-RENDERED in the chosen style):
+The character must be recognizably the same person/creature across all 9 tiles — same hair colour & shape, same clothing colour, same general face features. But identity does NOT mean keeping the source medium. If the source is a photo and the style is anime, the 9 tiles are 9 anime portraits of "this person turned anime". If the style is pixel art, the 9 tiles are 9 pixel-art versions of the same character. Only the pose / expression / phrase changes between tiles; the rendered art style stays uniform.
 
 STICKER FRAMING (every tile):
 - Subject is the upper body or full body of the character, fully inside the cell with comfortable margin.
