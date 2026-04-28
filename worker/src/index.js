@@ -407,12 +407,18 @@ function buildPrompt({ nine, styleHint, withText, campaign }) {
   const layout = LETTERS.map((letter, i) => {
     const phrase = nine[i];
     const action = actionFor(phrase);
-    const textRule = withText
-      ? `; print the phrase "${phrase}" boldly on the sticker EXACTLY as written (preserve every character — Chinese, English, Japanese, emoji, punctuation — verbatim). Use a large rounded font with a white stroke, easy to read at thumbnail size.`
-      : `; do NOT print any text on the sticker (the phrase is just the emotional cue)`;
-    return withText
-      ? `  [${letter}] ${NAMES[i]} cell:\n      EXACT TEXT TO PRINT (verbatim, character-by-character, no substitution): "${phrase}"\n      TEXT STYLE: Impact-meme style — PURE WHITE fill with a thick (5-8px) PURE BLACK outline hugging every glyph. Bold rounded sans-serif font. Readable on any chat background. Place text at the top OR bottom edge of the cell, edge-to-edge. The black outline matches the character's black outline for visual unity.\n      ACTION/POSE: ${action}`
-      : `  [${letter}] ${NAMES[i]} cell → action: ${action}${textRule}`;
+    if (withText) {
+      return `  [${letter}] ${NAMES[i]} cell:
+      EXACT TEXT TO PRINT (verbatim, character-by-character, no substitution): "${phrase}"
+      TEXT STYLE: Impact-meme style — PURE WHITE fill with a thick (5-8px) PURE BLACK outline hugging every glyph. Bold rounded sans-serif font. Readable on any chat background. Place text at the top OR bottom edge of the cell, edge-to-edge. The black outline matches the character's black outline for visual unity.
+      ACTION/POSE: ${action}`;
+    }
+    // withText=false: phrase is NOT rendered, but still drives the pose.
+    // Without this, Gemini got no semantic guidance and drew random poses.
+    return `  [${letter}] ${NAMES[i]} cell:
+      EMOTION CUE (do NOT render as text on the sticker — use ONLY as pose / facial-expression guidance): "${phrase}"
+      ACTION/POSE: render a pose + facial expression that clearly conveys the feeling of "${phrase}". ${action}
+      ABSOLUTELY NO TEXT, LETTERS, NUMBERS, OR EMOJI on this cell.`;
   }).join("\n");
 
   const diagram = `\`\`\`
@@ -460,7 +466,7 @@ OUTPUT RULES — strictly enforced:
 - Two cells MUST NOT share the same pose — vary arms, head tilt, expression.
 - ${withText
     ? 'TEXT FIDELITY (most important rule): the 9 phrases above are FIXED — render each phrase EXACTLY as assigned to its letter, character by character. Do NOT swap a phrase between cells. Do NOT substitute with synonyms. Do NOT translate or paraphrase. Do NOT pick alternative phrases from the same theme. The text on cell A must be the exact string after "EXACT TEXT TO PRINT" for cell A — no exceptions.'
-    : 'No text means no text — zero characters anywhere.'}${
+    : 'NO TEXT anywhere — zero characters / letters / numbers / emoji on any tile. BUT each cell\'s pose and facial expression MUST clearly convey the EMOTION CUE phrase assigned to that letter. Cell A\'s pose expresses cell A\'s phrase, cell B\'s pose expresses cell B\'s phrase, etc. — do NOT shuffle which emotion goes to which cell. The phrase guides the drawing even though it is never rendered.'}${
     camp && camp.extraPromptInstruction
       ? `\n\n${camp.extraPromptInstruction}`
       : ""
