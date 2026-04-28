@@ -206,16 +206,86 @@
 
     <div class="field-row">
       <label class="field">
-        畫風
+        畫風（46 種）
         <select id="style-hint">
-          <option value="match" selected>跟原圖風格一致</option>
-          <option value="cute_chibi">Q 版可愛</option>
-          <option value="bold_outline">粗線條卡通</option>
-          <option value="watercolor">水彩</option>
-          <option value="pixel">像素藝術</option>
-          <option value="meme_template">梗圖風格（Impact 字、誇張反應）</option>
-          <option value="hand_drawn">隨手亂塗（廢文梗圖）</option>
+          <option value="match" selected>🪄 跟原圖風格一致（推薦）</option>
+
+          <optgroup label="通用 chat sticker DNA">
+            <option value="classic_messenger_sticker">經典通訊軟體貼圖（粗黑線、軟陰影）</option>
+            <option value="pastel_kawaii">粉嫩卡哇伊（淡粉、簡化線）</option>
+            <option value="webcomic_lineart">輕量網路漫畫線稿（清爽腮紅、發光眼）</option>
+            <option value="loose_handdrawn_doodle">隨手手繪（個人 doodle 感）</option>
+            <option value="shitpost">廢文亂畫（PTT/Dcard 醜萌）</option>
+            <option value="retro_emoticon">復古 messenger emoji（黃臉圓嘴）</option>
+            <option value="jelly_blob">果凍布丁（透明圓潤）</option>
+            <option value="glitter_sparkle">Gen-Z 閃亮亮（彩虹、Holographic）</option>
+            <option value="black_marker">黑色麥克筆 zine 風</option>
+          </optgroup>
+
+          <optgroup label="梗圖 / 特殊">
+            <option value="meme_template">Impact 梗圖（白字黑邊）</option>
+            <option value="hand_drawn">napkin 塗鴉（5 秒草圖感）</option>
+          </optgroup>
+
+          <optgroup label="動漫 / 卡通">
+            <option value="cute_chibi">Q 版 chibi（大頭娃娃）</option>
+            <option value="bold_outline">粗線條卡通（LINE 經典感）</option>
+            <option value="manga">日本漫畫（網點、線稿）</option>
+            <option value="soft_anime">軟調手繪動畫（水彩背景、溫暖懷舊）</option>
+            <option value="hyperreal_anime">超寫實動漫（半寫實）</option>
+            <option value="cel_shading">賽璐璐動畫（硬邊陰影）</option>
+            <option value="flat_vector">扁平向量插圖</option>
+            <option value="doodle_line">極簡線條塗鴉</option>
+            <option value="crayon">蠟筆兒童畫</option>
+          </optgroup>
+
+          <optgroup label="3D / 立體">
+            <option value="polished_3d">精緻 3D 動畫（劇場級渲染）</option>
+            <option value="blind_box_3d">3D 盲盒公仔</option>
+            <option value="claymation">黏土動畫</option>
+            <option value="pixel_art">16-bit 像素藝術</option>
+          </optgroup>
+
+          <optgroup label="繪畫 / 插畫">
+            <option value="watercolor">水彩</option>
+            <option value="oil_painting">油畫（厚塗筆觸）</option>
+            <option value="gouache">不透明水彩 Gouache</option>
+            <option value="pencil_sketch">鉛筆素描</option>
+            <option value="colored_pencil">色鉛筆</option>
+            <option value="chinese_ink">水墨畫</option>
+            <option value="ukiyoe">浮世繪</option>
+            <option value="impressionism">印象派</option>
+            <option value="pop_art">Pop Art（普普藝術）</option>
+            <option value="art_nouveau">新藝術 Art Nouveau</option>
+            <option value="caricature">誇張漫畫 Caricature</option>
+            <option value="silhouette">剪影藝術</option>
+            <option value="film_noir">黑色電影 Film Noir</option>
+          </optgroup>
+
+          <optgroup label="攝影 / 寫實">
+            <option value="street_photography">街拍</option>
+            <option value="dslr_portrait">單眼人像散景</option>
+            <option value="film_35mm">35mm 底片</option>
+            <option value="polaroid">拍立得</option>
+            <option value="studio_portrait">棚拍人像</option>
+            <option value="fashion_editorial">時尚編輯雜誌風</option>
+            <option value="disposable_camera">即可拍 90s 復古</option>
+            <option value="film_90s">90 年代底片風</option>
+          </optgroup>
+
+          <optgroup label="潮 / 主題">
+            <option value="cyberpunk">賽博龐克</option>
+            <option value="vaporwave">蒸氣波 Vaporwave</option>
+            <option value="y2k">Y2K（鉻金屬、塑膠泡泡）</option>
+            <option value="steampunk">蒸氣龐克 Steampunk</option>
+          </optgroup>
+
+          <option value="__custom__">✏️ 自訂…（輸入英文描述）</option>
         </select>
+      </label>
+      <label class="field" id="style-custom-wrap" hidden>
+        自訂風格（英文描述，例：90s anime + neon pastel pop art with halftone dots）
+        <input type="text" id="style-custom-input" placeholder="describe your style in English..." maxlength="200" />
       </label>
 
       <label class="field">

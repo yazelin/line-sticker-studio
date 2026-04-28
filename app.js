@@ -606,8 +606,28 @@ function refreshEstimate() {
 
 generateBtn.addEventListener("click", () => generateAll());
 
+// Toggle the custom style input when user picks "✏️ 自訂…".
+styleHintSel.addEventListener("change", () => {
+  const wrap = $("style-custom-wrap");
+  if (!wrap) return;
+  wrap.hidden = styleHintSel.value !== "__custom__";
+  if (!wrap.hidden) $("style-custom-input")?.focus();
+});
+
 async function generateAll() {
   if (!state.sourceImage) return;
+  // Resolve effective styleHint: if user picked __custom__, use the
+  // free-form text input verbatim (worker accepts any string).
+  if (styleHintSel.value === "__custom__") {
+    const customStyle = $("style-custom-input")?.value.trim();
+    if (!customStyle || customStyle.length < 8) {
+      alert("請填入至少 8 個字的英文風格描述（或挑一個內建的）");
+      return;
+    }
+    state.styleHint = customStyle;
+  } else {
+    state.styleHint = styleHintSel.value;
+  }
   if (!auth.token) {
     const ok = confirm(
       "AI 生成需要 LINE 登入（每天 3 次免費）。\n\n" +

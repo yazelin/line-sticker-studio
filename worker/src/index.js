@@ -210,15 +210,80 @@ function campaignById(id) {
   return CAMPAIGNS.find((c) => c.id === id) || null;
 }
 
-// Visual style presets the frontend can switch between.
+// Visual style presets — curated from catime's style_library.json
+// (~174 styles) selecting ones that work well for LINE sticker art:
+// preserves face / expressive / not too distorted.
+//
+// Frontend may also pass a `styleHint` that's NOT in this dict — in
+// that case we treat the value as a raw English style description and
+// inject it as-is. Lets users type custom styles like "90s anime + neon
+// pastel pop art" without us pre-defining them.
 const STYLE_PRESETS = {
+  // === Default / Meta ===
   match: "Match the reference image's exact art style — keep the same drawing technique, line weight, color palette, and rendering. If the reference is a photo, output photo-style stickers; if anime, anime; if 3D, 3D.",
-  cute_chibi: "Cute chibi sticker style: oversized head, small body, big sparkling eyes, simplified rounded shapes, soft pastel palette but keep the character identifiable from the reference.",
-  bold_outline: "Bold cartoon sticker style: thick black outlines, flat saturated colors, simple shapes, expressive faces — like classic LINE stickers. Keep the character recognizable from the reference.",
-  watercolor: "Soft watercolor painting style: gentle washes of color, hand-painted feel, light pencil-like outlines, dreamy and warm.",
-  pixel: "16-bit pixel art style: chunky pixels, limited palette, no anti-aliasing, retro game feel.",
-  meme_template: "Classic internet meme / reaction-image style: keep the reference character but exaggerate the facial expression to peak meme energy. Any text on the sticker is rendered in BOLD IMPACT-style font, all caps when Latin, white fill with hard black outline, hugging the top or bottom edge of the cell. Composition leans high-contrast and immediately readable as a meme. Captions can be longer than typical sticker text (a full sentence or punchline is OK).",
-  hand_drawn: "Loose hand-drawn marker doodle style: wobbly lines, casual sketchy fills, looks like it was scribbled on a napkin in 30 seconds. Charming low-effort vibe — perfect for shitpost stickers.",
+
+  // === Photo styles ===
+  street_photography: "street photography, candid shot, natural light, urban setting, shallow depth of field, sharp focus on subject",
+  dslr_portrait: "DSLR portrait, 85mm f/1.4 lens, creamy bokeh background, sharp focus on subject's eyes, professional studio look",
+  film_35mm: "35mm film photography, grain, warm color cast, slight light leaks, vintage analogue feel",
+  polaroid: "Polaroid instant film aesthetic, slightly faded colors, soft vignette, square frame look",
+  studio_portrait: "studio portrait, clean key light + fill, neutral grey backdrop replaced with our keying green, sharp expression-focused composition",
+  fashion_editorial: "high-fashion editorial photography, dramatic poses, magazine-quality lighting, glossy color grading",
+  disposable_camera: "disposable film camera aesthetic, slight overexposure, flash glare, casual snapshot feel, 90s nostalgia",
+  film_90s: "1990s film aesthetic, washed pastel tones, soft grain, vintage Asian magazine vibe",
+
+  // === Painting / illustration ===
+  watercolor: "soft watercolor painting, gentle washes of color, light pencil-like outlines, hand-painted feel, dreamy and warm",
+  oil_painting: "oil painting, thick impasto brushstrokes, rich color palette, visible canvas texture",
+  gouache: "gouache illustration, opaque matte paint, smooth flat areas with subtle brush texture",
+  pencil_sketch: "pencil sketch, graphite on paper, hatching and cross-hatching, visible pencil strokes, traditional draftsman feel",
+  colored_pencil: "colored pencil drawing, layered strokes, soft texture, warm hand-illustrated charm",
+  chinese_ink: "Chinese ink wash painting, expressive brush strokes, minimal color, calligraphic quality, traditional East-Asian brush technique",
+  ukiyoe: "Japanese woodblock print, flat color blocks, thick black outlines, traditional decorative patterns",
+  impressionism: "impressionist painting, visible loose brush strokes, capture of light and color over detail, soft outdoor atmosphere",
+  pop_art: "pop-art style, bold flat saturated colors, halftone dots, thick black outlines, mid-century commercial poster vibe",
+  art_nouveau: "Art Nouveau illustration, ornate flowing lines, decorative botanical motifs, elegant 1900s decorative style",
+  film_noir: "film noir aesthetic, high contrast black and white, dramatic shadows, smoky moody atmosphere",
+  caricature: "caricature illustration, exaggerated key features, bold expression, comic portrait style",
+  silhouette: "silhouette art, simple solid black/dark forms against bright background, strong shape recognition",
+
+  // === Cartoon / anime ===
+  manga: "Japanese manga style, dynamic linework, screentone shading, expressive eyes, black and white with selective color accents",
+  soft_anime: "soft hand-drawn anime feature-film aesthetic, watercolor backgrounds, gentle nostalgic atmosphere, warm pastoral lighting",
+  hyperreal_anime: "hyperrealistic anime style, semi-realistic proportions, detailed shading, vibrant glossy eyes",
+  cel_shading: "cel-shaded animation, hard-edged shadows, flat color zones, classic 2D anime look",
+  cute_chibi: "cute chibi sticker style: oversized head, small body, big sparkling eyes, simplified rounded shapes, soft pastel palette",
+  bold_outline: "bold cartoon sticker style: thick black outlines, flat saturated colors, simple shapes, expressive faces, classic chat-sticker readability",
+  flat_vector: "flat vector illustration, geometric shapes, no gradients, modern editorial style",
+  doodle_line: "minimalist doodle line art, single-weight black outlines, ultra-clean simplification, almost icon-like",
+  crayon: "crayon children's drawing aesthetic, wobbly waxy lines, scribbled fills, playful imperfect charm",
+
+  // === 3D / craft ===
+  polished_3d: "polished 3D character animation, smooth CG rendering, expressive features, warm soft global illumination, feature-film 3D animation aesthetic",
+  blind_box_3d: "3D collectible-figure aesthetic, polished plastic surface, big-head proportions, designer-toy look",
+  claymation: "stop-motion clay animation, sculpted clay character, visible fingerprint texture, handmade tactile charm",
+  pixel_art: "16-bit pixel art, chunky pixels, limited retro palette, no anti-aliasing, classic retro game sprite feel",
+
+  // === Trendy / niche ===
+  cyberpunk: "cyberpunk aesthetic, neon-soaked night city, holographic elements, high-tech low-life mood",
+  vaporwave: "vaporwave aesthetic, pink and teal pastel palette, glitchy retro 80s/90s elements, dreamy nostalgia",
+  y2k: "Y2K aesthetic, chrome shiny metallic gradients, glossy bubble shapes, frosted plastic feel, early 2000s tech vibe",
+  steampunk: "steampunk Victorian retro-futurism, brass gears, leather, copper pipes, ornate mechanical details",
+
+  // === Generic chat-sticker DNA — original / no brand references ===
+  classic_messenger_sticker: "classic chat-app messenger sticker aesthetic: thick clean black outline, flat saturated cute colors, simplified rounded character with big expressive eyes, soft drop shadow, friendly pop-up sticker pack readability — entirely original character, not imitating any specific brand.",
+  pastel_kawaii: "minimal pastel kawaii style: thin delicate outlines, very soft pastel pink/pearl/mint palette, simplified facial features (small mouth, dot eyes), clean cute simplicity — entirely original design, no brand mascots.",
+  webcomic_lineart: "modern webcomic lineart sticker style: light airy clean linework, soft cheek blush, expressive bright eyes, gentle pastel shading.",
+  loose_handdrawn_doodle: "loose hand-drawn personal-doodle sticker style: relaxed wobbly lines, plain solid fills, simple character with relatable daily-life expression — original character, not imitating any published illustrator's mascot.",
+  shitpost: "shitpost style: deliberately ugly-cute, asymmetric features, lazy drawing energy, like 5-second sketches that go viral exactly because they're so badly drawn.",
+  retro_emoticon: "retro early-2000s messenger emoticon style: round yellow/peach face, simple dot eyes + curve mouth, glossy bubble look, nostalgic early-internet feel — generic round face, no specific app icon.",
+  jelly_blob: "jelly-blob plush sticker style: glossy translucent gelatinous original character, soft 3D round form with light-reflection highlights, dewy candy aesthetic — fully original creature design.",
+  glitter_sparkle: "Gen-Z glitter / sparkle aesthetic: shimmery rainbow pastel halftone backgrounds, sparkles around the character, holographic decoration, iridescent sticker-bomb energy.",
+  black_marker: "black-marker zine style: hand-drawn with thick chunky black marker, cross-hatched shading, white correction-pen highlights, photocopy-zine aesthetic, 90s underground cool.",
+
+  // === Special / meta ===
+  meme_template: "Classic internet meme / reaction-image style: keep the reference character but exaggerate the facial expression to peak meme energy. Any text on the sticker is rendered in BOLD IMPACT-style font, all caps when Latin, white fill with hard black outline, hugging the top or bottom edge of the cell.",
+  hand_drawn: "Loose hand-drawn marker doodle style: wobbly lines, casual sketchy fills, looks like it was scribbled on a napkin in 30 seconds.",
 };
 
 function shuffle(arr) {
@@ -320,7 +385,17 @@ function buildPrompt({ nine, styleHint, withText, campaign }) {
   if (!Array.isArray(nine) || nine.length !== 9) {
     throw new Error("buildPrompt: `nine` must be a length-9 array");
   }
-  const style = STYLE_PRESETS[effectiveStyle] || STYLE_PRESETS.match;
+  // styleHint can be a preset key (looked up in STYLE_PRESETS) OR a free-form
+  // English description (used as-is). Anything > 8 chars not in dict =
+  // treat as custom.
+  let style;
+  if (STYLE_PRESETS[effectiveStyle]) {
+    style = STYLE_PRESETS[effectiveStyle];
+  } else if (typeof effectiveStyle === "string" && effectiveStyle.trim().length > 8) {
+    style = effectiveStyle.trim();
+  } else {
+    style = STYLE_PRESETS.match;
+  }
   withText = effectiveWithText; // override the local var the rest of the fn uses
 
   const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
