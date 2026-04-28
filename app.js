@@ -620,8 +620,8 @@ async function generateAll() {
   // free-form text input verbatim (worker accepts any string).
   if (styleHintSel.value === "__custom__") {
     const customStyle = $("style-custom-input")?.value.trim();
-    if (!customStyle || customStyle.length < 8) {
-      alert("請填入至少 8 個字的風格描述（中英文皆可，或挑一個內建的）");
+    if (!customStyle || customStyle.length < 2) {
+      alert("請填入至少 2 個字的風格描述（例：「梵谷風」「cyberpunk」）");
       return;
     }
     state.styleHint = customStyle;

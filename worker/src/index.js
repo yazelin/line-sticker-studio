@@ -386,12 +386,12 @@ function buildPrompt({ nine, styleHint, withText, campaign }) {
     throw new Error("buildPrompt: `nine` must be a length-9 array");
   }
   // styleHint can be a preset key (looked up in STYLE_PRESETS) OR a free-form
-  // English description (used as-is). Anything > 8 chars not in dict =
-  // treat as custom.
+  // description (any language, used as-is). Anything ≥ 2 chars not in dict
+  // = treat as custom user input. Frontend already validates ≥ 2 too.
   let style;
   if (STYLE_PRESETS[effectiveStyle]) {
     style = STYLE_PRESETS[effectiveStyle];
-  } else if (typeof effectiveStyle === "string" && effectiveStyle.trim().length > 8) {
+  } else if (typeof effectiveStyle === "string" && effectiveStyle.trim().length >= 2) {
     style = effectiveStyle.trim();
   } else {
     style = STYLE_PRESETS.match;
