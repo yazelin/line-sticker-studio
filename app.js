@@ -1113,11 +1113,8 @@ async function removeAllBackgrounds() {
   bgProgress.hidden = false;
 
   try {
-    let nonGreenTiles = 0;
     for (let i = 0; i < state.tiles.length; i++) {
       const tile = state.tiles[i];
-      // Snapshot pristine canvas on first pass so "restore" + re-runs
-      // always start from the original Gemini output.
       if (!tile.originalCanvas) {
         const snap = document.createElement("canvas");
         snap.width = tile.canvas.width;
@@ -1129,30 +1126,13 @@ async function removeAllBackgrounds() {
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
-      const result = await bgRemoveWithTextPreserve(tile.originalCanvas);
-      if (result === null) {
-        nonGreenTiles++;
-        continue; // leave tile as-is
-      }
-      tile.canvas = result;
+      tile.canvas = await bgRemoveWithTextPreserve(tile.originalCanvas);
       tile.transparent = true;
       renderTileIntoCell(i, tile);
     }
-    if (nonGreenTiles > 0 && nonGreenTiles === state.tiles.length) {
-      setBgProgress(0,
-        `❌ ${nonGreenTiles} 張全部不是綠底 — 無法自動去背。請走 🅰 AI 路徑（會自動畫綠底），或先用其他工具把你的 3×3 圖去背成透明 PNG 再上傳。`,
-      );
-    } else if (nonGreenTiles > 0) {
-      state.bgRemoved = true;
-      setBgProgress(100,
-        `完成！${state.tiles.length - nonGreenTiles} 張已去背、${nonGreenTiles} 張不是綠底（保留原樣）。`,
-      );
-      bgRestoreBtn.hidden = false;
-    } else {
-      state.bgRemoved = true;
-      setBgProgress(100, `完成！${state.tiles.length} 張已去背。`);
-      bgRestoreBtn.hidden = false;
-    }
+    state.bgRemoved = true;
+    setBgProgress(100, `完成！${state.tiles.length} 張已去背。`);
+    bgRestoreBtn.hidden = false;
   } catch (err) {
     console.error(err);
     setBgProgress(0, `去背失敗：${err.message}`);
@@ -1204,21 +1184,20 @@ function setBgProgress(pct, text) {
 // Result: Gemini's exact text (including stylized strokes, white halo,
 // any tear-drop integration) is preserved; only the truly empty white
 // card area becomes transparent. No more double text, no more ghosting.
-// Returns a transparent canvas if the source has a green bg; returns
-// null if not green (caller should skip / show a message).
-// Outline / shadow post-process removed — Gemini draws black character
-// outline directly per the prompt, no client-side decoration needed.
+// Always chroma-key out green from the source canvas. Returns the
+// transparent-bg canvas. (Previously gated on detectBgType, which had
+// a false-negative on densely-composed cells where the character
+// covered most of the frame and visible green pixels fell below 20%.
+// Always-run is safer: AI path always sends green; BYOG without green
+// is a no-op since chroma key matches no pixels — the image just
+// stays unchanged.)
 async function bgRemoveWithTextPreserve(srcCanvas) {
   const w = srcCanvas.width;
   const h = srcCanvas.height;
   const origCtx = srcCanvas.getContext("2d");
   const origData = origCtx.getImageData(0, 0, w, h);
   const orig = origData.data;
-
-  if (detectBgType(orig, w, h) === "green") {
-    return chromaKeyGreen(srcCanvas, w, h, orig, "none");
-  }
-  return null;
+  return chromaKeyGreen(srcCanvas, w, h, orig, "none");
 }
 
 // Legacy ISNet path retained for reference; never called now.
