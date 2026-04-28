@@ -1803,6 +1803,7 @@ function drawTextOverlay(ctx, phrase, w, h) {
 // Step 4 — download
 
 $("download-zip-btn").addEventListener("click", downloadZip);
+$("download-stickers-only-btn")?.addEventListener("click", downloadStickersOnly);
 
 async function downloadZip() {
   if (state.tiles.length === 0) return;
@@ -1859,6 +1860,54 @@ async function downloadZip() {
   const a = document.createElement("a");
   a.href = url;
   a.download = `line-stickers-${Date.now()}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 100);
+}
+
+// "Download all 9 transparent stickers" — for users who don't want to
+// upload to LINE Creators Market. No main/tab/README, no 8-pick rule.
+// Uses the same processed canvases (370×320, padded), so they ARE
+// LINE-spec sized but freed of the bundle obligations.
+async function downloadStickersOnly() {
+  if (state.tiles.length === 0) return;
+  if (!window.JSZip) {
+    alert("JSZip 未載入");
+    return;
+  }
+  // Same transparency safety check as the main ZIP download.
+  const anyTransparent = state.tiles.some((t) => t.transparent);
+  if (!anyTransparent) {
+    const proceed = confirm(
+      "⚠ 還沒去背！下載的 PNG 都是白底，貼到別的地方會有方塊感。\n\n" +
+      "→ 確定：先去背再下載 (推薦) — 我會自動執行去背\n" +
+      "→ 取消：硬要下載白底版本",
+    );
+    if (proceed) {
+      await removeAllBackgrounds();
+      if (state.tiles.some((t) => t.transparent)) {
+        return downloadStickersOnly();
+      }
+    }
+  }
+  const zip = new JSZip();
+  for (let i = 0; i < state.tiles.length; i++) {
+    const tile = state.tiles[i];
+    const blob = await canvasToBlob(tile.canvas, "image/png");
+    // Name with phrase if we have one — much easier to find later than 01.png.
+    const phrase = (tile.phrase || "").replace(/[\\/:*?"<>|]/g, "").trim();
+    const safePhrase = phrase ? `-${phrase}` : "";
+    const name = `${String(i + 1).padStart(2, "0")}${safePhrase}.png`;
+    zip.file(name, blob);
+  }
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(zipBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `transparent-stickers-${Date.now()}.zip`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {

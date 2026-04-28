@@ -1166,6 +1166,17 @@ button, .primary, .ghost {
   width: 100%;
 }
 
+.ghost.big {
+  padding: 0.85rem 1.25rem;
+  font-size: 0.95rem;
+  width: 100%;
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
 .ghost {
   background: var(--card);
   color: var(--text);
