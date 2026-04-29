@@ -89,15 +89,55 @@
 
 ## 🔐 防刷機制
 
-**Cloudflare Turnstile + 每 IP 每日配額** — 沒有登入。
+**Cloudflare Turnstile + 每 IP 每日配額 + 並發鎖 + 先扣後跑** — 沒有登入。四道防線疊起來。
 
+### Layer 1：Cloudflare Turnstile（擋機器人）
 - 前端載 Turnstile widget（`Managed` mode，多數情況無感），每次 AI 呼叫帶一個 single-use token
 - Worker 收到請求 → 打 Cloudflare `siteverify` 驗 token → 通過才往 Vertex 送
-- 配額按 `CF-Connecting-IP` 計數，每天 5 次（`DAILY_LIMIT` 在 worker 開頭可改）
-- 配額**只在 Gemini 確認成功後才扣**，timeout / 錯誤不會白燒
-- 重設特定 IP 的配額：`POST /admin/reset-quota` with `Authorization: Bearer <ADMIN_TOKEN>`
+- 前端 token 用過自動 reset 並 mint 下一顆，403 時自動重試一次抓 race condition
+
+### Layer 2：每 IP 每日配額（擋一般刷）
+- 配額按 `CF-Connecting-IP` 計數（CF 自動帶、外部不可偽造），每天 5 次（`DAILY_LIMIT` 在 worker 開頭可改）
+- KV key `quota:<ip>:<UTC date>`，TTL 36h 自清
+
+### Layer 3：每 IP in-flight lock（擋並發狂點）
+- 進 worker 第一件事：檢查 KV `inflight:<ip>` 在不在 → 在的話直接 429，不打 Vertex
+- TTL 180 秒做 safety net（worker 中途死掉也會自動釋放）
+- 沒這層的話：使用者狂點 5 次「生成」，5 個 request 同時飛、各自看到 `used=0`、各自打 Vertex → 燒 5 次錢，quota 卻只 +1（KV 是 last-write-wins、不是 atomic increment）
+
+### Layer 4：先扣後跑（擋假裝沒成功的 abuse）
+- 進 worker → 通過 Turnstile + lock + quota check → **馬上 bump quota +1** → 才打 Vertex
+- 狂點不等回應沒用，第 6 次就會在 worker 入口 429
+- 上游 502/524/連線失敗 → 自動 `decrementQuota` 退回，使用者沒吃虧
+
+### 管理員 reset
+- `POST /admin/reset-quota` with `Authorization: Bearer <ADMIN_TOKEN>`，body `{"ip":"x.x.x.x"}` 指定 IP（省略 → 用 caller 的 IP）
 
 > 🚫 **沒驗證路徑也限額？** 故意不做。BYOG 路徑（自己用 Gemini 跑）天生不耗 worker 額度、不限次、無 Turnstile；要 AI 產就過一次無感驗證。
+
+## 🛡 內容合規（LINE Creators Market 退件雷區）
+
+Worker 的 prompt 把 LINE [審核準則](https://creator.line.me/zh-hant/review_guideline/) 12 大類退件原因全部寫進 `CONTENT COMPLIANCE` 區塊，模型生圖時就主動避開：
+
+| 類別 | 擋什麼 |
+|---|---|
+| A 肖像權 | 真人明星 / 政治人物 / KOL — 強制畫成原創卡通角色 |
+| B 版權 IP | Pokemon / Sanrio / Disney / Ghibli / Nintendo / 鬼滅 / 哆啦 A 夢 / Line Friends 自家也禁 / Snoopy / Rilakkuma / Miffy 等 |
+| C 商標 | 真 logo（Chanel CC、LV monogram、Gucci GG、Hermès H、Nike swoosh⋯）+ 假 logo 文字（避免 GUVICY / PRADO 等模型幻覺品牌字） |
+| C+ 包款 silhouette | 即使無 logo，也避開 Hermès Birkin/Kelly turn-lock 鎖扣、Chanel Classic Flap quilted、LV Speedy/Neverfull、Dior Lady、Prada Galleria 三角牌、Gucci Bamboo、Goyard chevron、Fendi Baguette 等可識別輪廓（依台灣新式樣專利範圍） |
+| D 色情 | 露點、貼身、性暗示姿勢 |
+| E 暴力 | 血、武器威脅、自殘 |
+| F 仇恨 | 種族 / 性別 / 宗教歧視 |
+| G 宗教 | 佛像、十字架、可蘭經、神職服飾 |
+| H 政治 | 黨徽、政治人物、競選口號 |
+| I 毒/酒/賭 | 注射針筒、賭場、大麻葉 |
+| J 個資 | 真名、電話、QR code、URL |
+| K 醫療詐騙 | 減肥前後對比、療效宣稱 |
+| L 兒少/動物 | 兒童不當、虐待動物、條碼 |
+
+**「Compliance > style > theme > user wording」** — 即使使用者 prompt 提到禁項，prompt builder 仍然會覆寫。
+
+> 雖然不能 100% 保證每張都過審（特別是包款 silhouette 是 grey area），但同個 prompt 比沒有 compliance block 之前安全度高 5~10 倍。實際上架被退件的話 LINE 會列具體理由，再針對該張重抽即可。
 
 ## 🚀 本地開發
 

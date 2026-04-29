@@ -103,6 +103,37 @@ LINE Creators Market 的特輯活動每隔幾週會換一批。新增方式：
 過期的活動可以留在陣列裡（前端會自動把 `submitDeadline < today` 的卡片灰化排到後面）—
 也方便日後翻舊帳。
 
+## Anti-abuse layers
+
+Four layers stack on top of each other. See top-level README §防刷機制 for a
+full explanation; the short version:
+
+1. **Turnstile** — `verifyTurnstile()` calls Cloudflare siteverify before any
+   Vertex call. Token must be in request body as `turnstileToken`.
+2. **Per-IP daily quota** — keyed `quota:<ip>:<UTC-date>` in KV, default 5/day,
+   TTL 36h.
+3. **Per-IP in-flight lock** — `acquireInflight()` writes `inflight:<ip>` to
+   KV at request entry, deletes in `finally`. TTL 180s safety net. Blocks
+   concurrent spam-clicks before any Vertex call fires.
+4. **Pre-emptive quota bump** — `bumpQuota()` is called BEFORE the Vertex
+   request, not after. On known-recoverable upstream failure (502 / network
+   error / no image returned), `decrementQuota()` refunds. Closes the
+   "spam-click in flight, none of them increment" race.
+
+## Content compliance
+
+The `buildPrompt()` function injects a `CONTENT COMPLIANCE` block covering
+12 categories of LINE Creators Market rejection reasons (portrait rights,
+copyrighted IP characters, brand logos & fabricated brand-style text, luxury
+bag silhouettes, sexual / violent / hate / religious / political / drug-
+related content, defamation, medical claims, child safety). Any user-supplied
+phrase or theme that pushes toward a violation is reinterpreted at generation
+time — `Compliance > style > theme > user wording`.
+
+This is best-effort, not a guarantee — Gemini still occasionally produces
+borderline output. But it dramatically reduces the rejected-resubmission
+churn vs prompts that don't say "no logos".
+
 ## Cost & rate-limit notes
 
 Gemini image preview models charge per image — at the time of writing,
