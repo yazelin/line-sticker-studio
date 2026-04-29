@@ -383,8 +383,50 @@ STICKER FRAMING (every tile):
 - Background is plain solid PURE NEON GREEN (#00FF00) — this is a chroma-key plate that will be programmatically removed by the downstream tool. Use the brightest, most saturated, most uniform green possible. NO gradients, NO shading, NO scenery, NO patterns. Same identical green across all 9 cells.
 - CRITICAL: the character itself must contain NO GREEN elements anywhere. NO green clothes, NO green hair, NO green eyes, NO green accessories, NO green objects. If the original reference has any green, substitute it with red, orange, blue, purple, or yellow. Even slight greenish tints on white clothes or skin should be avoided. This is essential — green pixels on the character will be chroma-keyed out and become holes.
 - CHARACTER OUTLINE: trace the entire character silhouette with a clean, uniform 2-3px PURE BLACK outline (the boundary between character and the green background). Apply consistently and identically across ALL 9 cells. This gives the sticker pack a unified "die-cut sticker" look and lets downstream bg removal find the silhouette precisely. Even photo-realistic stickers should have this clean black outline added.
+- ABSOLUTELY NO real brand logos, monograms, or trademarked markings on ANY object — no Chanel CC interlocking pattern, no Louis Vuitton LV monogram, no Gucci GG, no Hermes H, no Burberry check, no Prada triangle, no Nike swoosh, no Apple logo, no Starbucks siren, no automotive logos, etc. ALSO NO fake brand-style English/letter text printed on bags / wallets / clothing / accessories (no "GUVICY" / "PRADO" / "CHANEEL" type fabricated brand-like text either — model often hallucinates fake brand text on luxury items, do NOT do that). All bags, wallets, phones, hats, watches, clothing must be either completely plain (solid color only) or have only abstract non-trademark decoration (a single ribbon, a generic flower, a heart, a star, plain stitching). This rule is STRICT — LINE Creators Market auto-rejects any sticker containing real or fake brand markings, costing the user days of resubmission time.
 - No drop shadows touching the cell edges (small soft shadow under feet OK).
 - Bold, lively poses — readable at chat-thumbnail size (~120×120 px).
+
+CONTENT COMPLIANCE — LINE Creators Market审核 rules. EVERY cell must comply. ANY violation gets the entire pack auto-rejected, costing the operator days of resubmission. Treat every rule below as hard constraints that override style / theme / user preference:
+
+[A] PORTRAIT RIGHTS — no real public figures
+- Do NOT render the character to look recognizably like any real celebrity, KOL, athlete, politician, royalty, religious leader, or other identifiable public figure. If the user's reference image resembles a famous person, deliberately stylize away from that resemblance: change face shape, hair, eye color, age — keep ONLY the user's intent of "a person" and produce a clearly original cartoon character. Better to lose photo-realistic likeness than to accidentally depict, say, a Korean idol or a politician.
+
+[B] COPYRIGHTED IP — no trademarked characters
+- Do NOT redraw, imitate, parody, or reference any copyrighted/trademarked cartoon, anime, game, comic, or movie character. Hard ban list (non-exhaustive): Pokemon (Pikachu / Eevee / etc.), Sanrio (Hello Kitty / My Melody / Cinnamoroll / Kuromi / Pompompurin), Disney / Pixar (Mickey / Mickey ears / Princesses / Frozen / Toy Story / Marvel / Star Wars), Studio Ghibli (Totoro / No-Face / Kiki), Nintendo (Mario / Luigi / Zelda / Pikmin / Animal Crossing), DC Comics, Crayon Shin-chan, Doraemon, Anpanman, One Piece, Naruto, Demon Slayer (Kimetsu no Yaiba), Jujutsu Kaisen, Spy x Family, Sumikko Gurashi, Line Friends (Brown / Cony / Sally — yes EVEN LINE'S OWN MASCOTS are off-limits for third-party stickers), Miffy, Peanuts (Snoopy / Charlie Brown), Garfield, Pucca, Rilakkuma. The character must be 100% original even if user's reference resembles one of the above.
+
+[C] BRAND TRADEMARKS — covered above in STICKER FRAMING. (NO real brand logos, NO fabricated brand-style text on accessories.)
+
+[D] SEXUAL / NUDITY
+- Character must be fully clothed in modest everyday wear. NO exposed genitals, NO exposed nipples (any gender), NO bare buttocks, NO sheer/see-through clothing, NO underwear-only shots, NO swimsuits more revealing than a one-piece / boardshorts, NO fetish gear, NO bondage imagery, NO sexually suggestive poses (e.g. spread legs, sexualized licking, breasts thrust forward as the focal point). Cute / pretty / glamorous is fine; sexualized is not.
+
+[E] VIOLENCE / GORE
+- NO blood (cartoon nosebleed for "embarrassed" emotion is borderline OK only if minimal, but avoid). NO severed limbs. NO realistic weapons used aggressively against another character (a chef holding a knife to cook is fine; a knife pointed at someone is not). NO firearms aimed at characters. NO depictions of self-harm, suicide, or graphic injury. Cartoon impact effects (stars, BAM, sweatdrops) are fine.
+
+[F] HATE / DISCRIMINATION
+- NO caricatures that mock or stereotype people by race, ethnicity, nationality, religion, gender identity, sexual orientation, disability, or body type. NO derogatory symbols (swastikas, KKK imagery, etc.). Skin tones and features must be drawn respectfully if the reference is from any specific ethnic group.
+
+[G] RELIGION
+- NO Buddha statues, NO crucifixes, NO Star of David, NO Quranic calligraphy, NO Hindu deities, NO Shinto torii as a religious object, NO mantra/sutra text, NO clergy attire (priest robes, monk robes, hijab as religious uniform), NO religious gestures with religious context. Generic spiritual / "lucky" symbols (a four-leaf clover, a horseshoe) are OK.
+
+[H] POLITICS
+- NO political party logos, NO campaign slogans, NO portraits of politicians (current or historical), NO national flags as the central visual focus, NO protest/activist signage, NO political rally imagery, NO military uniforms as costume.
+
+[I] DRUGS / ALCOHOL / TOBACCO / GAMBLING
+- NO syringes, pills, drug paraphernalia, marijuana leaves, smoking depictions, bong / pipe imagery. NO casino imagery (slot machines, poker chips, dice in gambling context, roulette wheel). A normal coffee mug, tea cup, single wine glass at dinner, plain beer mug at a party — all OK if not the focus and not promoting excess.
+
+[J] DEFAMATION / HARASSMENT / PERSONAL INFO
+- NO real personal names (other than the assigned phrase if it happens to contain a name), NO phone numbers, NO email addresses, NO physical addresses, NO QR codes, NO external URLs printed on the sticker. NO content directed at a real specific identifiable third party.
+
+[K] MEDICAL / FINANCIAL CLAIMS
+- NO before/after weight loss imagery, NO "cures X disease" type claims, NO medical advice imagery, NO get-rich-quick / pyramid scheme imagery, NO crypto pump signage.
+
+[L] OTHER LINE-SPECIFIC
+- NO content depicting child endangerment, child sexualization, or any content involving minors that would be inappropriate.
+- NO depictions of cruelty to animals.
+- NO QR codes or barcodes (LINE auto-rejects).
+
+If a user-supplied phrase or theme would push you toward violating any of the above (e.g. user types a phrase referencing a real celebrity, or asks for "Pokemon trainer" style), reinterpret the request to comply: render the character generically without the brand/IP/person reference. Compliance > style > theme > user wording.
 
 LAYOUT — each cell shows EXACTLY the action mapped to its letter; do not swap, merge, or skip cells:
 
