@@ -14,8 +14,8 @@
 ### 兩條輸入路徑
 
 - **🅰 主路徑**：上傳一張角色圖（自拍 / 手繪 / Q 版頭像）讓 AI 產一切
-  - 需要 LINE 登入
-  - 每天免費 **3 次** AI 生成（per LINE userId、UTC 0 點重置）
+  - **免登入**（Cloudflare Turnstile 無感人機驗證即可）
+  - 每天免費 **5 次** AI 生成（per IP、UTC 0 點重置）
 - **🅱 替代路徑**：自己用 Gemini 跑好 3×3 圖直接上傳
   - 免登入、免 API 額度、不限次
   - 工具仍會幫你切 8 張、去背、打包成 LINE 規格 ZIP
@@ -57,45 +57,47 @@
 - **💚 客戶端 chroma-key 去背**：純綠 #00FF00 背景 → α=0、含 despill + 1-pass erosion 修綠邊。圖不上傳到任何伺服器
 - **📦 ZIP 直接符合 LINE 規格**：370×320 貼圖 + 240×240 main + 96×74 tab + 上架說明 README
 - **🔄 跨 tab 同步**：BroadcastChannel 即時同步配額，A tab 用了 B tab 立刻看到剩 N 次
+- **🤖 Cloudflare Turnstile**：無感人機驗證、防刷 quota
 - **⚖ LINE 規則確認 gate**：上傳前必須勾選確認，避免上架被退件
 
 ## 🏗 架構
 
 ```
-┌────────────────────────┐         ┌──────────────────────────┐
-│  Static frontend       │  POST   │  Cloudflare Worker       │
-│  (GitHub Pages)        ├────────►│  line-sticker-gemini     │
-│  index.html / app.js   │  JSON   │  src/index.js            │
-│  styles.css            │         │  + VERTEX_API_KEY secret │
-│                        │         │  + QUOTA KV namespace    │
-│  ↓ split (chroma-key)  │         └────────┬─────────────────┘
+┌────────────────────────┐         ┌────────────────────────────┐
+│  Static frontend       │  POST   │  Cloudflare Worker         │
+│  (GitHub Pages)        ├────────►│  line-sticker-gemini       │
+│  index.html / app.js   │  JSON   │  src/index.js              │
+│  styles.css            │         │  + VERTEX_API_KEY secret   │
+│  + Turnstile widget    │         │  + TURNSTILE_SECRET secret │
+│                        │         │  + QUOTA KV namespace      │
+│  ↓ split (chroma-key)  │         └────────┬───────────────────┘
 │  ↓ fitWithPadding 10px │                  │
 │  ↓ JSZip pack          │      ┌───────────┴──────┐
 │  ↓ download .zip       │      ▼                  ▼
-└────────────────────────┘  ┌────────┐    ┌──────────────────────┐
-                            │ LINE   │    │ Vertex AI            │
-                            │ Login  │    │ gemini-3.1-flash-    │
-                            │ verify │    │ image-preview (圖)   │
-                            └────────┘    │ gemini-2.5-flash (字)│
-                                          └──────────────────────┘
+└────────────────────────┘  ┌────────────┐  ┌──────────────────────┐
+                            │ Cloudflare │  │ Vertex AI            │
+                            │ Turnstile  │  │ gemini-3.1-flash-    │
+                            │ siteverify │  │ image-preview (圖)   │
+                            └────────────┘  │ gemini-2.5-flash (字)│
+                                            └──────────────────────┘
 ```
 
 - 前端純靜態，掛 GitHub Pages 免費
 - Worker 是 Vertex API 的 proxy + prompt 組合器 + 配額守門員（不存圖、不留 log）
-- 配額計數靠 Cloudflare KV，key 是 `quota:<lineUserId>:<UTC date>`，TTL 36h 自清
+- 配額計數靠 Cloudflare KV，key 是 `quota:<ip>:<UTC date>`（IP 來自 `CF-Connecting-IP`，Cloudflare 自動帶、外部不可偽造），TTL 36h 自清
 - 一次 AI 生成 = 1 次 worker call → 1 次 Gemini call → 9 個 sticker tiles（給用戶 9 選 8）
 
-## 🔐 認證 + 配額
+## 🔐 防刷機制
 
-走 **LINE Login PKCE flow** — 純前端、不需要 Channel Secret。
+**Cloudflare Turnstile + 每 IP 每日配額** — 沒有登入。
 
-- LINE userId 由 worker 透過 LINE 公開 verify endpoint 驗證 access_token 拿到
-- 設定 `EXPECTED_LINE_CHANNEL_ID` 後 worker 只接受該 channel 簽出的 token（防止其他人用自己的 LINE Login channel 借免費生成）
-- 配額：每天 3 次（DAILY_LIMIT 在 worker 開頭可改）
+- 前端載 Turnstile widget（`Managed` mode，多數情況無感），每次 AI 呼叫帶一個 single-use token
+- Worker 收到請求 → 打 Cloudflare `siteverify` 驗 token → 通過才往 Vertex 送
+- 配額按 `CF-Connecting-IP` 計數，每天 5 次（`DAILY_LIMIT` 在 worker 開頭可改）
 - 配額**只在 Gemini 確認成功後才扣**，timeout / 錯誤不會白燒
-- 管理員 LINE userId 寫在 `ADMIN_LINE_USER_IDS`，可用 `POST /admin/reset-quota` 重設自己當天配額
+- 重設特定 IP 的配額：`POST /admin/reset-quota` with `Authorization: Bearer <ADMIN_TOKEN>`
 
-> 🚫 **沒登入路徑也限額？** 故意不做。BYOG 路徑（自己用 Gemini 跑）天生不耗 worker 額度、不限次、不需要登入；要 AI 產就請登入。這個設計逼大家二選一，沒有「半路繞過」的灰色地帶。
+> 🚫 **沒驗證路徑也限額？** 故意不做。BYOG 路徑（自己用 Gemini 跑）天生不耗 worker 額度、不限次、無 Turnstile；要 AI 產就過一次無感驗證。
 
 ## 🚀 本地開發
 
@@ -105,7 +107,12 @@
 # Worker（本地 miniflare，不需要 Cloudflare 帳號）
 cd worker
 npm install
-echo 'VERTEX_API_KEY="貼你 Vertex Express key"' > .dev.vars
+cat > .dev.vars <<'EOF'
+VERTEX_API_KEY="貼你 Vertex Express key"
+TURNSTILE_SECRET="1x0000000000000000000000000000000AA"
+ADMIN_TOKEN="dev-admin-token"
+EOF
+# 上面的 TURNSTILE_SECRET 是 Cloudflare 官方測試 secret（永遠驗證通過）
 npx wrangler dev --local --port 8787
 # Worker 起在 http://127.0.0.1:8787
 # 本機 dev 時 KV 也是 in-memory，配額不會跨重啟保留（剛好方便測試）
@@ -127,6 +134,8 @@ localStorage.setItem('line-sticker-api-url', 'http://127.0.0.1:8787');
 cd worker
 npx wrangler login                           # OAuth in browser
 npx wrangler secret put VERTEX_API_KEY       # 貼你的 Vertex Express key
+npx wrangler secret put TURNSTILE_SECRET     # 拿到下一步 (2) 之後再做
+npx wrangler secret put ADMIN_TOKEN          # 隨機字串、自己記住就好
 
 # 建配額用的 KV namespace（一次性）
 npx wrangler kv namespace create QUOTA
@@ -137,15 +146,15 @@ npx wrangler deploy
 # → https://line-sticker-gemini.<subdomain>.workers.dev
 ```
 
-### 2. LINE Login channel
+### 2. Cloudflare Turnstile site
 
-到 [LINE Developers](https://developers.line.biz/console/) 建一個 LINE Login channel：
+到 [Cloudflare Dashboard → Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) 按「Add site」：
 
-- Callback URL：你的 GitHub Pages URL（例 `https://<user>.github.io/line-sticker-studio/`）
-- 把拿到的 **Channel ID** 寫進：
-  - `app.js` 的 `LINE_CHANNEL_ID`
-  - `worker/src/index.js` 的 `EXPECTED_LINE_CHANNEL_ID`
-- 想當管理員的話把你的 `Uxxxxx` userId 加進 `ADMIN_LINE_USER_IDS`
+- **Domain**：你 GitHub Pages 的網域（例 `yazelin.github.io`），本機開發再加一行 `localhost`
+- **Widget mode**：選 **Managed**（無感人機驗證）
+- 拿到一組 Site Key / Secret Key：
+  - **Site Key** 寫進 `worker/src/index.js` 的 `TURNSTILE_SITE_KEY` 常數，重 deploy
+  - **Secret Key** `npx wrangler secret put TURNSTILE_SECRET`
 
 ### 3. 前端 → GitHub Pages
 
@@ -159,14 +168,14 @@ git push origin main   # GitHub Pages 從 main branch 自動 deploy
 
 | 場景 | 你的成本 |
 |---|---|
-| 用戶按「開始生成」（AI 路徑、登入） | ~USD 0.04 / 用戶 / 次（最高 3 次/天） |
+| 用戶按「開始生成」（AI 路徑） | ~USD 0.04 / IP / 次（最高 5 次/天） |
 | AI 主題產生器（gemini-2.5-flash） | ~USD 0.0005 / 次 |
 | 用戶按「複製 prompt → 自己到 Gemini 跑 → 回來上傳」| **0** |
 | 用戶 BYOG（直接傳自己準備好的 3×3）| **0** |
 | 前端去背 / ZIP 打包 / IndexedDB 歷史 | 0（瀏覽器算 + 瀏覽器存） |
-| KV 配額讀寫 | 在 Cloudflare free tier 內 |
+| KV 配額讀寫 + Turnstile siteverify | 在 Cloudflare free tier 內 |
 
-最壞情況：100 個用戶每天用滿 3 次 = 300 次 = ~USD 12/天 = ~USD 360/月。
+最壞情況：100 個 IP 每天用滿 5 次 = 500 次 = ~USD 20/天 = ~USD 600/月。
 真擔心被刷爆可以調低 `DAILY_LIMIT` 或在 worker 前套 Cloudflare Rate Limiting。
 
 ## 📁 檔案結構

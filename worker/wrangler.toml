@@ -2,8 +2,14 @@ name = "line-sticker-gemini"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
-# VERTEX_API_KEY is set via:
-#   npx wrangler secret put VERTEX_API_KEY
+# Required secrets (set each via `npx wrangler secret put <NAME>`):
+#   VERTEX_API_KEY      — Google Cloud Vertex AI key
+#   TURNSTILE_SECRET    — Cloudflare Turnstile secret key (pair with the
+#                         TURNSTILE_SITE_KEY const in src/index.js).
+#                         For local/dev: 1x0000000000000000000000000000000AA
+#                         (Cloudflare's always-passing test secret).
+#   ADMIN_TOKEN         — random string used as Bearer for
+#                         POST /admin/reset-quota.
 #
 # Optional vars (non-secret):
 #   DEFAULT_MODEL = "gemini-3.1-flash-image-preview"

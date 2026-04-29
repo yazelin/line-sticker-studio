@@ -10,19 +10,15 @@
 const DEFAULT_MODEL = "gemini-3.1-flash-image-preview";
 const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB decoded image
 
-// Daily AI-generation quota per LINE user. Tweak freely — this is the
-// only place to change it. Counter resets at UTC midnight.
-const DAILY_LIMIT = 3;
+// Daily AI-generation quota per client IP. Tweak freely — only place to
+// change it. Counter resets at UTC midnight. Bumped from 3 → 5 because
+// Taiwan carriers share IPs via CGNAT, so 3 was too tight in practice.
+const DAILY_LIMIT = 5;
 
-// Optional: if set, only LINE access tokens issued for this channel are
-// accepted. Leave empty to accept tokens from any LINE Login channel.
-const EXPECTED_LINE_CHANNEL_ID = "2009916047";
-
-// LINE userIds who can use POST /admin/reset-quota to nuke their own
-// daily quota. Add more by appending to this array.
-const ADMIN_LINE_USER_IDS = [
-  "Ue9388ac5ea91bba25f76e1bd6ea766d3", // yazelin
-];
+// Cloudflare Turnstile site key — public, safe to expose. Frontend reads
+// this via GET /config so we don't hardcode it twice. Pair this with
+// the TURNSTILE_SECRET wrangler secret.
+const TURNSTILE_SITE_KEY = "0x4AAAAAADFiwIJdu3HaPU_F";
 
 // Default Traditional-Chinese short phrases commonly used on LINE.
 // Frontend can override with its own phrase list. We keep ~50 here so
@@ -418,52 +414,48 @@ OUTPUT RULES — strictly enforced:
   }`;
 }
 
-// ---------- LINE Login authentication ----------
+// ---------- Client IP + Cloudflare Turnstile ----------
+//
+// We rate-limit by IP (CF-Connecting-IP, set by Cloudflare on every
+// request — spoof-proof from the outside). Turnstile is a separate
+// gate: every AI-spending request carries a Turnstile token that we
+// hand to Cloudflare's siteverify endpoint to confirm it came from a
+// real browser, not a script.
 
-function getBearerToken(request) {
-  const auth = request.headers.get("Authorization") || "";
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  return m ? m[1].trim() : null;
+function getClientIp(request) {
+  return request.headers.get("CF-Connecting-IP") || "unknown";
 }
 
-// Verifies a LINE access_token via the public LINE verify endpoint AND
-// returns the associated profile. Returns null on any failure (expired,
-// wrong channel, network error, etc.) so the caller can 401 cleanly.
-async function getLineUser(accessToken) {
-  if (!accessToken) return null;
+async function verifyTurnstile(env, token, ip) {
+  if (!env || !env.TURNSTILE_SECRET) {
+    return { ok: false, reason: "TURNSTILE_SECRET not configured on worker" };
+  }
+  if (!token || typeof token !== "string") {
+    return { ok: false, reason: "missing turnstile token" };
+  }
   try {
-    const verifyRes = await fetch(
-      `https://api.line.me/oauth2/v2.1/verify?access_token=${encodeURIComponent(accessToken)}`,
+    const form = new FormData();
+    form.append("secret", env.TURNSTILE_SECRET);
+    form.append("response", token);
+    if (ip) form.append("remoteip", ip);
+    const r = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      { method: "POST", body: form },
     );
-    if (!verifyRes.ok) return null;
-    const verify = await verifyRes.json();
-    if (!verify.expires_in || verify.expires_in <= 0) return null;
-    if (
-      EXPECTED_LINE_CHANNEL_ID &&
-      verify.client_id &&
-      String(verify.client_id) !== EXPECTED_LINE_CHANNEL_ID
-    ) {
-      return null; // token is from a different LINE Login channel
-    }
-
-    const profileRes = await fetch("https://api.line.me/v2/profile", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!profileRes.ok) return null;
-    const profile = await profileRes.json();
+    const data = await r.json();
+    if (data && data.success) return { ok: true };
     return {
-      userId: profile.userId,
-      displayName: profile.displayName,
-      pictureUrl: profile.pictureUrl,
+      ok: false,
+      reason: (data && data["error-codes"] && data["error-codes"].join(",")) || "verify failed",
     };
-  } catch {
-    return null;
+  } catch (err) {
+    return { ok: false, reason: String(err) };
   }
 }
 
 // ---------- Daily quota tracking via Cloudflare KV ----------
 //
-// Keyed `quota:<userId>:<YYYY-MM-DD UTC>`. TTL is 36 hours so old keys
+// Keyed `quota:<ip>:<YYYY-MM-DD UTC>`. TTL is 36 hours so old keys
 // self-clean a day after the count became irrelevant. If the QUOTA KV
 // binding is missing (e.g. local dev without KV), quota is reported as
 // unlimited so the app still functions.
@@ -472,23 +464,70 @@ function todayUTC() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function quotaKey(userId) {
-  return `quota:${userId}:${todayUTC()}`;
+function quotaKey(ip) {
+  return `quota:${ip}:${todayUTC()}`;
 }
 
-async function readQuota(env, userId) {
+async function readQuota(env, ip) {
   if (!env || !env.QUOTA) return { used: 0, limit: DAILY_LIMIT, kvAvailable: false };
-  const used = parseInt((await env.QUOTA.get(quotaKey(userId))) || "0", 10);
+  const used = parseInt((await env.QUOTA.get(quotaKey(ip))) || "0", 10);
   return { used, limit: DAILY_LIMIT, kvAvailable: true };
 }
 
-async function bumpQuota(env, userId) {
+async function bumpQuota(env, ip) {
   if (!env || !env.QUOTA) return DAILY_LIMIT; // pretend unlimited if no KV
-  const k = quotaKey(userId);
+  const k = quotaKey(ip);
   const used = parseInt((await env.QUOTA.get(k)) || "0", 10);
   const next = used + 1;
   await env.QUOTA.put(k, String(next), { expirationTtl: 60 * 60 * 36 });
   return next;
+}
+
+// Refund a quota slot when the upstream call failed AFTER we'd already
+// pre-emptively bumped. Keeps us "honest" — only successful generations
+// burn the user's daily allowance.
+async function decrementQuota(env, ip) {
+  if (!env || !env.QUOTA) return;
+  const k = quotaKey(ip);
+  const used = parseInt((await env.QUOTA.get(k)) || "0", 10);
+  if (used <= 0) return;
+  await env.QUOTA.put(k, String(used - 1), { expirationTtl: 60 * 60 * 36 });
+}
+
+// ---------- Per-IP in-flight serialization ----------
+//
+// Without this, a malicious user spam-clicking "Generate" fires N
+// concurrent requests; each one passes the quota check before any of
+// them increments (KV is last-write-wins, not atomic). All N call
+// Vertex → all N cost real money → only 1 of N gets credited.
+//
+// Mitigation: at request entry, set `inflight:<ip>` in KV. While that
+// key exists, reject incoming requests for that same IP with 429.
+// Always delete it in `finally`. TTL 180s is a safety net in case the
+// worker dies mid-request and never reaches `releaseInflight`.
+
+const INFLIGHT_TTL_SECONDS = 180;
+
+function inflightKey(ip) {
+  return `inflight:${ip}`;
+}
+
+// Returns true if we acquired the lock, false if another request from
+// the same IP is already in flight. KV is eventually consistent so two
+// near-simultaneous calls may both see "no lock"; we accept that small
+// race in exchange for not paying for Durable Objects. The window is
+// milliseconds — much narrower than a 50-second Vertex call.
+async function acquireInflight(env, ip) {
+  if (!env || !env.QUOTA) return true;
+  const k = inflightKey(ip);
+  if (await env.QUOTA.get(k)) return false;
+  await env.QUOTA.put(k, "1", { expirationTtl: INFLIGHT_TTL_SECONDS });
+  return true;
+}
+
+async function releaseInflight(env, ip) {
+  if (!env || !env.QUOTA) return;
+  await env.QUOTA.delete(inflightKey(ip));
 }
 
 function corsHeaders(origin) {
@@ -528,25 +567,17 @@ export default {
       if (url.pathname === "/campaigns") {
         return json({ campaigns: campaignsManifest() }, 200, cors);
       }
-      if (url.pathname === "/me") {
-        // Returns the current LINE user + quota + isAdmin flag.
-        const token = getBearerToken(request);
-        const user = await getLineUser(token);
-        if (!user) {
-          return json({ error: "auth required or invalid LINE token" }, 401, cors);
-        }
-        const quota = await readQuota(env, user.userId);
-        const isAdmin = ADMIN_LINE_USER_IDS.includes(user.userId);
-        return json(
-          { user, quota, lineChannelId: EXPECTED_LINE_CHANNEL_ID, isAdmin },
-          200, cors,
-        );
+      if (url.pathname === "/quota") {
+        // Public — returns this caller's IP-keyed daily quota. No auth.
+        const ip = getClientIp(request);
+        const quota = await readQuota(env, ip);
+        return json({ quota }, 200, cors);
       }
       if (url.pathname === "/config") {
-        // Public — frontend uses this to render the LINE Login button
-        // without hard-coding the channel ID in JS.
+        // Public — frontend reads the Turnstile site key + daily limit
+        // here so they're not hardcoded in two places.
         return json({
-          lineChannelId: EXPECTED_LINE_CHANNEL_ID,
+          turnstileSiteKey: TURNSTILE_SITE_KEY,
           dailyLimit: DAILY_LIMIT,
         }, 200, cors);
       }
@@ -566,6 +597,17 @@ export default {
       }
       let body;
       try { body = await request.json(); } catch { body = {}; }
+      // Turnstile gate — same secret as /generate, prevents scripts from
+      // looping the brainstorm endpoint to burn API budget.
+      const tsResult = await verifyTurnstile(
+        env, body?.turnstileToken, getClientIp(request),
+      );
+      if (!tsResult.ok) {
+        return json(
+          { error: "turnstile verification failed", detail: tsResult.reason },
+          403, cors,
+        );
+      }
       const description = String(body?.description || "").trim();
       if (!description) {
         return json({ error: "description required" }, 400, cors);
@@ -636,20 +678,27 @@ export default {
       }
     }
 
-    // POST /admin/reset-quota — nuke the current user's daily quota.
-    // Requires Bearer token AND user must be in ADMIN_LINE_USER_IDS.
+    // POST /admin/reset-quota — nuke a specific IP's daily quota.
+    // Authorized via `Authorization: Bearer <ADMIN_TOKEN>` matching the
+    // ADMIN_TOKEN secret. Body is `{ ip?: string }`; if omitted, resets
+    // the caller's own IP. Set the secret with:
+    //   npx wrangler secret put ADMIN_TOKEN
     if (url.pathname === "/admin/reset-quota") {
-      const token = getBearerToken(request);
-      const user = await getLineUser(token);
-      if (!user) return json({ error: "auth required" }, 401, cors);
-      if (!ADMIN_LINE_USER_IDS.includes(user.userId)) {
-        return json({ error: "forbidden — not an admin" }, 403, cors);
+      const auth = request.headers.get("Authorization") || "";
+      const m = auth.match(/^Bearer\s+(.+)$/i);
+      const provided = m ? m[1].trim() : "";
+      if (!env.ADMIN_TOKEN || !provided || provided !== env.ADMIN_TOKEN) {
+        return json({ error: "forbidden" }, 403, cors);
       }
+      let body = {};
+      try { body = await request.json(); } catch {}
+      const ip = (body && typeof body.ip === "string" && body.ip.trim())
+        || getClientIp(request);
       if (env.QUOTA) {
-        await env.QUOTA.delete(quotaKey(user.userId));
+        await env.QUOTA.delete(quotaKey(ip));
       }
       return json(
-        { ok: true, message: "Quota reset to 0", userId: user.userId },
+        { ok: true, message: "Quota reset to 0", ip },
         200, cors,
       );
     }
@@ -690,39 +739,31 @@ export default {
       );
     }
 
-    // ---- LINE Login auth + daily quota gate ----
-    const token = getBearerToken(request);
-    const user = await getLineUser(token);
-    if (!user) {
-      return json(
-        {
-          error: "auth required",
-          hint: "byog",
-          message: "請先用 LINE 登入。或不想登入：自己用 Gemini 跑 3×3 圖、上傳到 BYOG 路徑（免費）。",
-        },
-        401,
-        cors,
-      );
-    }
-    const quotaBefore = await readQuota(env, user.userId);
-    if (quotaBefore.used >= quotaBefore.limit) {
-      return json(
-        {
-          error: "daily quota exceeded",
-          hint: "byog",
-          quota: quotaBefore,
-          message: `今天的 ${quotaBefore.limit} 次 AI 生成已用完。可以複製 prompt 自己到 Gemini 跑、再丟回來走 BYOG 路徑（免費、不限次）。明天 UTC 0 點重置。`,
-        },
-        429,
-        cors,
-      );
-    }
-
     let body;
     try {
       body = await request.json();
     } catch {
       return json({ error: "invalid JSON body" }, 400, cors);
+    }
+
+    const ip = getClientIp(request);
+
+    // ---- Cheap gates first (Turnstile + body shape) ----
+    // We do these BEFORE acquiring the in-flight lock so a malformed
+    // request from one tab doesn't lock out the user's other tab for
+    // the next 3 minutes.
+    const tsResult = await verifyTurnstile(env, body?.turnstileToken, ip);
+    if (!tsResult.ok) {
+      return json(
+        {
+          error: "turnstile verification failed",
+          hint: "byog",
+          detail: tsResult.reason,
+          message: "人機驗證失敗或過期，請重新整理頁面再試。或走 BYOG 路徑（免費、不需驗證）。",
+        },
+        403,
+        cors,
+      );
     }
 
     const {
@@ -745,100 +786,149 @@ export default {
       return json({ error: "image too large (max ~7.5 MB)" }, 413, cors);
     }
 
-    const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
-    // Pick the 9 phrases ONCE per request, then use the same set both for
-    // the prompt sent to Gemini AND the response we return to the client.
-    // (Earlier bug: pickNineSlots was called twice → two different
-    //  random sets, so the response's `phrases` field never matched what
-    //  Gemini actually saw, making fidelity testing meaningless.)
-    const nine = pickNineSlots({ slots, phrases, campaign });
-    const chosenPrompt = typeof prompt === "string" && prompt.trim()
-      ? prompt
-      : buildPrompt({
-          nine,
-          styleHint,
-          withText: withText !== false,
-          campaign,
-          lang,
-        });
-
-    const apiUrl = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
-
-    const payload = {
-      contents: [
+    // ---- Acquire per-IP in-flight lock ----
+    const gotLock = await acquireInflight(env, ip);
+    if (!gotLock) {
+      const quotaNow = await readQuota(env, ip);
+      return json(
         {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType, data: imageBase64 } },
-            { text: chosenPrompt },
-          ],
+          error: "in flight",
+          quota: quotaNow,
+          message: "上一個生成還在跑（最久 50 秒）。等它完成或失敗再點，狂點不會更快、還會被擋。",
         },
-      ],
-      generationConfig: {
-        responseModalities: ["IMAGE"],
-        imageConfig: { aspectRatio: "1:1", imageSize: "2K" },
-      },
-    };
+        429,
+        cors,
+      );
+    }
 
-    let upstream;
+    // Everything from here on must release the lock — wrap in try/finally.
     try {
-      upstream = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      return json(
-        { error: "upstream fetch failed", detail: String(err) },
-        502,
-        cors,
-      );
-    }
+      // ---- Daily quota gate ----
+      const quotaBefore = await readQuota(env, ip);
+      if (quotaBefore.used >= quotaBefore.limit) {
+        return json(
+          {
+            error: "daily quota exceeded",
+            hint: "byog",
+            quota: quotaBefore,
+            message: `今天的 ${quotaBefore.limit} 次 AI 生成已用完。可以複製 prompt 自己到 Gemini 跑、再丟回來走 BYOG 路徑（免費、不限次）。明天 UTC 0 點重置。`,
+          },
+          429,
+          cors,
+        );
+      }
 
-    if (!upstream.ok) {
-      const text = await upstream.text();
+      // ---- Pre-emptive bump (charge BEFORE the upstream call) ----
+      // This is the key defense against spam-clicking: a flood of
+      // simultaneous requests each bumps before any of them returns,
+      // so the 6th-Nth request hits the quota gate above without ever
+      // calling Vertex. Refunded below on known-recoverable errors.
+      const usedAfter = await bumpQuota(env, ip);
+
+      const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
+      // Pick the 9 phrases ONCE per request, then use the same set both
+      // for the prompt sent to Gemini AND the response. (Earlier bug:
+      // pickNineSlots was called twice → two different random sets, so
+      // the response's `phrases` never matched what Gemini saw.)
+      const nine = pickNineSlots({ slots, phrases, campaign });
+      const chosenPrompt = typeof prompt === "string" && prompt.trim()
+        ? prompt
+        : buildPrompt({
+            nine,
+            styleHint,
+            withText: withText !== false,
+            campaign,
+            lang,
+          });
+
+      const apiUrl = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
+
+      const payload = {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { inlineData: { mimeType, data: imageBase64 } },
+              { text: chosenPrompt },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseModalities: ["IMAGE"],
+          imageConfig: { aspectRatio: "1:1", imageSize: "2K" },
+        },
+      };
+
+      let upstream;
+      try {
+        upstream = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (err) {
+        // Network-level failure → didn't hit Vertex. Refund.
+        await decrementQuota(env, ip);
+        return json(
+          { error: "upstream fetch failed", detail: String(err) },
+          502,
+          cors,
+        );
+      }
+
+      if (!upstream.ok) {
+        const text = await upstream.text();
+        // Vertex returned a 4xx/5xx — we may still be billed if it was
+        // 4xx (bad request format), but mostly these are 502/503/524 on
+        // their side. Refund either way; if a 4xx pattern develops we'd
+        // see it in logs and tighten our prompt-builder.
+        await decrementQuota(env, ip);
+        return json(
+          {
+            error: "upstream error",
+            status: upstream.status,
+            detail: text.slice(0, 1500),
+          },
+          502,
+          cors,
+        );
+      }
+
+      const data = await upstream.json();
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const imagePart = parts.find((p) => p.inlineData);
+      if (!imagePart) {
+        // Vertex 200'd but didn't return an image (safety filter / model
+        // quirk). We DID get billed for this. Don't refund — the user's
+        // input triggered a real billable call.
+        return json(
+          {
+            error: "no image in response",
+            raw: JSON.stringify(data).slice(0, 1500),
+            quota: { used: usedAfter, limit: DAILY_LIMIT },
+          },
+          502,
+          cors,
+        );
+      }
+
       return json(
         {
-          error: "upstream error",
-          status: upstream.status,
-          detail: text.slice(0, 1500),
+          mimeType: imagePart.inlineData.mimeType || "image/png",
+          data: imagePart.inlineData.data,
+          model: chosenModel,
+          phrases: nine.map((s) => s.phrase),
+          slots: nine,
+          campaign: campaign || null,
+          lang: lang || null,
+          quota: { used: usedAfter, limit: DAILY_LIMIT },
         },
-        502,
+        200,
         cors,
       );
+    } finally {
+      // Always release the in-flight lock — success, error, or thrown.
+      await releaseInflight(env, ip);
     }
-
-    const data = await upstream.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find((p) => p.inlineData);
-    if (!imagePart) {
-      return json(
-        {
-          error: "no image in response",
-          raw: JSON.stringify(data).slice(0, 1500),
-        },
-        502,
-        cors,
-      );
-    }
-
-    // Decrement only on confirmed Gemini success — don't burn the user's
-    // quota for upstream failures.
-    const usedAfter = await bumpQuota(env, user.userId);
-
-    return json(
-      {
-        mimeType: imagePart.inlineData.mimeType || "image/png",
-        data: imagePart.inlineData.data,
-        model: chosenModel,
-        phrases: nine.map((s) => s.phrase),
-        slots: nine,
-        campaign: campaign || null,
-        lang: lang || null,
-        quota: { used: usedAfter, limit: DAILY_LIMIT },
-      },
-      200,
-      cors,
-    );
   },
 };

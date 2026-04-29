@@ -103,10 +103,6 @@ function relativeTime(ts) {
 
 const API_URL_KEY = "line-sticker-api-url";
 const SLOT_CONFIG_KEY = "line-sticker-slots";
-const LINE_TOKEN_KEY = "line-access-token";
-const LINE_VERIFIER_KEY = "line-pkce-verifier";
-const LINE_STATE_KEY = "line-oauth-state";
-const LINE_CHANNEL_ID = "2009916047";
 const DEFAULT_API_URL = "https://line-sticker-gemini.yazelinj303.workers.dev";
 const LANG_KEY = "line-sticker-lang";
 // Sticker-text language: separate from UI language. Controls (a) the
@@ -138,11 +134,11 @@ const I18N = {
     "ko": "캐릭터 이미지 한 장 업로드 → AI가 스티커 팩 생성 → ZIP 다운로드 → LINE Creators Market 업로드",
   },
   step_a_title: {
-    "zh-TW": "🅰 主路徑：上傳角色圖讓 AI 產（每天 3 次免費，需 LINE 登入）",
-    "zh-CN": "🅰 主路径：上传角色图让 AI 产（每天 3 次免费，需 LINE 登入）",
-    "en": "🅰 Main path: upload a character image, let AI generate (3 free/day, LINE login required)",
-    "ja": "🅰 メイン: キャラ画像をアップ、AI に生成させる（1日3回無料、LINE ログイン必要）",
-    "ko": "🅰 메인 경로: 캐릭터 업로드 → AI 생성 (하루 3회 무료, LINE 로그인 필요)",
+    "zh-TW": "🅰 主路徑：上傳角色圖讓 AI 產（每天 5 次免費，免登入）",
+    "zh-CN": "🅰 主路径：上传角色图让 AI 产（每天 5 次免费，免登入）",
+    "en": "🅰 Main path: upload a character image, let AI generate (5 free/day, no login)",
+    "ja": "🅰 メイン: キャラ画像をアップ、AI に生成させる（1日5回無料、ログイン不要）",
+    "ko": "🅰 메인 경로: 캐릭터 업로드 → AI 생성 (하루 5회 무료, 로그인 불필요)",
   },
   step_b_title: {
     "zh-TW": "🅱 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）",
@@ -231,16 +227,6 @@ const I18N = {
     "ja": "3×3 グリッドをクリックまたはドロップ",
     "ko": "3×3 그리드를 클릭하거나 드롭",
   },
-  auth_login_btn: {
-    "zh-TW": "用 LINE 登入解鎖 AI 生成",
-    "zh-CN": "用 LINE 登入解锁 AI 生成",
-    "en": "Login with LINE to unlock AI generation",
-    "ja": "LINE でログインして AI 生成を解放",
-    "ko": "LINE으로 로그인하여 AI 생성 해제",
-  },
-  auth_logout: {
-    "zh-TW": "登出", "zh-CN": "登出", "en": "Log out", "ja": "ログアウト", "ko": "로그아웃",
-  },
 };
 
 function getLang() {
@@ -308,161 +294,59 @@ function saveSlotConfig(cfg) {
 const poolCache = { loaded: false, items: [] };
 
 // ------------------------------------------------------------------
-// LINE Login (PKCE flow, all client-side — no Channel Secret needed)
+// IP-based daily quota + Cloudflare Turnstile (no LINE login)
+//
+// Flow:
+//   1. On page load we load the Turnstile script (added in index.html);
+//      its `onload=onTurnstileApiReady` callback hits window.turnstile,
+//      which we use to render an invisible/managed widget in #cf-turnstile.
+//   2. The widget's success callback stores a token in `auth.tsToken`.
+//      Tokens are single-use, so after every API call we call
+//      `turnstile.reset()` to mint a fresh one in the background.
+//   3. /generate and /generate-themes both require the token in the
+//      request body. Worker calls Cloudflare siteverify before forwarding
+//      to Vertex AI. Frontend never holds anything secret.
+//   4. Quota is keyed by CF-Connecting-IP on the worker side; we just
+//      display whatever `quota` field comes back.
 
 const auth = {
-  user: null,        // { userId, displayName, pictureUrl } when logged in
   quota: null,       // { used, limit }
-  token: null,       // LINE access_token
-  isAdmin: false,    // from /me — gates the admin reset button
+  tsToken: null,     // current Turnstile token (single-use)
+  tsWidgetId: null,  // returned by turnstile.render()
+  tsSiteKey: null,   // hydrated from worker /config
 };
 
-function getStoredToken() {
-  return localStorage.getItem(LINE_TOKEN_KEY);
-}
-
-function clearAuth() {
-  localStorage.removeItem(LINE_TOKEN_KEY);
-  auth.user = null;
-  auth.quota = null;
-  auth.token = null;
-  auth.isAdmin = false;
-}
-
-function genVerifier() {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return base64UrlEncode(bytes);
-}
-
-async function genChallenge(verifier) {
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(verifier),
-  );
-  return base64UrlEncode(new Uint8Array(buf));
-}
-
-function base64UrlEncode(bytes) {
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function redirectUri() {
-  return window.location.origin + window.location.pathname;
-}
-
-// PKCE verifier + state TTL: 10 minutes is plenty for round-trip
-// through LINE Login while preventing stale entries from haunting
-// future sign-in attempts.
-const LINE_PKCE_TTL_MS = 10 * 60 * 1000;
-const LINE_PKCE_TS_KEY = "line-pkce-ts";
-
-// Detect LINE in-app browser via UA. Only used to tweak the error
-// message — both branches use the same auth flow.
-function isLineInAppBrowser() {
-  return /Line\//i.test(navigator.userAgent);
-}
-
-async function startLineLogin() {
-  const verifier = genVerifier();
-  const challenge = await genChallenge(verifier);
-  const state = genVerifier();
-  // IMPORTANT: localStorage, NOT sessionStorage.
-  // sessionStorage is per-tab/per-webview-instance. iOS LINE in-app
-  // browser opens `access.line.me` via Universal Link → kicks the user
-  // into the LINE app for native auth → callback returns into a
-  // potentially-new webview context. sessionStorage from the original
-  // tab is gone → state mismatch. localStorage survives because it's
-  // origin-scoped, not session-scoped.
-  localStorage.setItem(LINE_VERIFIER_KEY, verifier);
-  localStorage.setItem(LINE_STATE_KEY, state);
-  localStorage.setItem(LINE_PKCE_TS_KEY, String(Date.now()));
-  const params = new URLSearchParams({
-    response_type: "code",
-    client_id: LINE_CHANNEL_ID,
-    redirect_uri: redirectUri(),
-    state,
-    scope: "profile",
-    code_challenge: challenge,
-    code_challenge_method: "S256",
+// Wait for a fresh Turnstile token. Resolves immediately if one is
+// already cached; otherwise polls every 200 ms until the widget's
+// success callback fires (or `timeoutMs` elapses).
+function awaitTurnstileToken(timeoutMs = 8000) {
+  if (auth.tsToken) return Promise.resolve(auth.tsToken);
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const poll = setInterval(() => {
+      if (auth.tsToken) {
+        clearInterval(poll);
+        resolve(auth.tsToken);
+      } else if (Date.now() - start > timeoutMs) {
+        clearInterval(poll);
+        reject(new Error("Turnstile 驗證超時，請重新整理頁面再試。"));
+      }
+    }, 200);
   });
-  window.location.href =
-    `https://access.line.me/oauth2/v2.1/authorize?${params}`;
 }
 
-function clearPkceStorage() {
-  localStorage.removeItem(LINE_VERIFIER_KEY);
-  localStorage.removeItem(LINE_STATE_KEY);
-  localStorage.removeItem(LINE_PKCE_TS_KEY);
-}
-
-async function handleOAuthCallback() {
-  const url = new URL(window.location.href);
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
-  const oauthErr = url.searchParams.get("error");
-  if (!code && !oauthErr) return false;
-
-  // Always strip OAuth params from the URL bar — even on failure.
-  const cleanUrl = url.pathname + (url.hash || "");
-
-  if (oauthErr) {
-    alert(`LINE 登入失敗：${oauthErr} ${url.searchParams.get("error_description") || ""}`);
-    window.history.replaceState({}, document.title, cleanUrl);
-    return false;
+// Mint a new token for the next request. Called after every successful
+// API hit (Turnstile tokens are single-use).
+function resetTurnstile() {
+  auth.tsToken = null;
+  if (typeof window !== "undefined" && window.turnstile && auth.tsWidgetId !== null) {
+    try { window.turnstile.reset(auth.tsWidgetId); } catch {}
   }
-
-  const expectedState = localStorage.getItem(LINE_STATE_KEY);
-  const verifier = localStorage.getItem(LINE_VERIFIER_KEY);
-  const startedAt = parseInt(localStorage.getItem(LINE_PKCE_TS_KEY) || "0", 10);
-  const ageOk = startedAt && (Date.now() - startedAt) < LINE_PKCE_TTL_MS;
-
-  if (!expectedState || state !== expectedState || !verifier || !ageOk) {
-    const inApp = isLineInAppBrowser();
-    const inAppHint = inApp
-      ? "\n\n📱 偵測到你正在 LINE 內建瀏覽器中。LINE app 會把授權跳到外部 → 回來時可能跑到不同分頁，登入資料就遺失了。\n\n👉 解法：請點右上角「⋯」→「在 Safari 開啟」(iOS) /「在 Chrome 開啟」(Android)，重新登入。"
-      : "\n\n如果剛剛切過分頁、或經過很長時間才回來，請重新點「用 LINE 登入」再試一次。";
-    alert(`LINE 登入逾時或被中斷。${inAppHint}`);
-    clearPkceStorage();
-    window.history.replaceState({}, document.title, cleanUrl);
-    return false;
-  }
-
-  try {
-    const params = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: redirectUri(),
-      client_id: LINE_CHANNEL_ID,
-      code_verifier: verifier,
-    });
-    const resp = await fetch("https://api.line.me/oauth2/v2.1/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params,
-    });
-    if (!resp.ok) {
-      throw new Error(`token exchange failed: ${resp.status} ${await resp.text()}`);
-    }
-    const tok = await resp.json();
-    localStorage.setItem(LINE_TOKEN_KEY, tok.access_token);
-    auth.token = tok.access_token;
-  } catch (err) {
-    console.error(err);
-    alert(`LINE 登入失敗：${err.message}`);
-  } finally {
-    clearPkceStorage();
-    window.history.replaceState({}, document.title, cleanUrl);
-  }
-  return true;
 }
 
 // Cross-tab quota sync — when one tab generates / hits 429, broadcast
-// the new quota numbers to all other open tabs of this app so their
-// "今日剩 X/3" counter stays accurate without polling.
+// the new quota to all other open tabs so their "今日剩 X/N" counter
+// stays accurate without polling.
 const authBroadcast = typeof BroadcastChannel !== "undefined"
   ? new BroadcastChannel("line-sticker-auth")
   : null;
@@ -470,9 +354,6 @@ if (authBroadcast) {
   authBroadcast.onmessage = (e) => {
     if (e.data?.type === "quota-update" && e.data.quota) {
       auth.quota = e.data.quota;
-      refreshAuthUi();
-    } else if (e.data?.type === "auth-cleared") {
-      clearAuth();
       refreshAuthUi();
     }
   };
@@ -482,36 +363,47 @@ function broadcastQuota(quota) {
     authBroadcast.postMessage({ type: "quota-update", quota });
   }
 }
-function broadcastAuthCleared() {
-  if (authBroadcast) authBroadcast.postMessage({ type: "auth-cleared" });
-}
 
-async function refreshAuth() {
-  auth.token = getStoredToken();
-  if (!auth.token) {
-    auth.user = null;
-    auth.quota = null;
-    return;
-  }
+async function refreshQuota() {
   const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
   try {
-    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/me", {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    });
-    if (resp.status === 401) {
-      clearAuth();
-      return;
-    }
-    if (!resp.ok) throw new Error(`/me ${resp.status}`);
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/quota");
+    if (!resp.ok) throw new Error(`/quota ${resp.status}`);
     const data = await resp.json();
-    auth.user = data.user;
     auth.quota = data.quota;
-    auth.isAdmin = !!data.isAdmin;
   } catch (err) {
-    console.warn("refreshAuth failed:", err);
-    // Don't clear token on transient network errors — only on 401.
+    console.warn("refreshQuota failed:", err);
   }
 }
+
+async function loadTurnstileConfig() {
+  const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+  try {
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/config");
+    if (!resp.ok) throw new Error(`/config ${resp.status}`);
+    const data = await resp.json();
+    auth.tsSiteKey = data.turnstileSiteKey || null;
+  } catch (err) {
+    console.warn("loadTurnstileConfig failed:", err);
+  }
+}
+
+// Called by the Turnstile script when it's ready (see ?onload=... in
+// the index.html script tag).
+window.onTurnstileApiReady = function onTurnstileApiReady() {
+  if (!auth.tsSiteKey) {
+    // /config hasn't returned yet — try again shortly.
+    setTimeout(window.onTurnstileApiReady, 200);
+    return;
+  }
+  if (!window.turnstile || auth.tsWidgetId !== null) return;
+  auth.tsWidgetId = window.turnstile.render("#cf-turnstile", {
+    sitekey: auth.tsSiteKey,
+    callback: (token) => { auth.tsToken = token; },
+    "expired-callback": () => { auth.tsToken = null; },
+    "error-callback": () => { auth.tsToken = null; },
+  });
+};
 
 // Campaign manifest cache (fetched lazily on first config-step open).
 const campaignCache = { loaded: false, items: [] };
@@ -788,20 +680,6 @@ async function generateAll() {
   } else {
     state.styleHint = styleHintSel.value;
   }
-  if (!auth.token) {
-    const ok = confirm(
-      "AI 生成需要 LINE 登入（每天 3 次免費）。\n\n" +
-      "→ 確定：跳轉到 LINE 登入\n" +
-      "→ 取消：先下捲用「替代路徑」自己跑 Gemini、上傳 3×3 圖（免登入、免費、不限次）",
-    );
-    if (ok) { startLineLogin(); }
-    else {
-      $("step-byog").scrollIntoView({ behavior: "smooth", block: "start" });
-      $("step-byog").classList.add("flash-highlight");
-      setTimeout(() => $("step-byog").classList.remove("flash-highlight"), 2000);
-    }
-    return;
-  }
   if (auth.quota && auth.quota.used >= auth.quota.limit) {
     showQuotaExceededModal();
     return;
@@ -843,6 +721,13 @@ async function generateAll() {
   }, 500);
 
   try {
+    let tsToken;
+    try { tsToken = await awaitTurnstileToken(); }
+    catch (err) {
+      clearInterval(ticker);
+      setGenProgress(0, err.message);
+      return;
+    }
     const result = await fetchGrid(apiUrl, {
       imageBase64: base64,
       mimeType,
@@ -851,6 +736,7 @@ async function generateAll() {
       withText: state.withText,
       campaign: state.campaign,
       lang: state.textLang,
+      turnstileToken: tsToken,
     });
     clearInterval(ticker);
 
@@ -893,10 +779,12 @@ async function generateAll() {
     clearInterval(ticker);
     console.error(err);
     if (err.code === "QUOTA_EXCEEDED") {
-      setGenProgress(0, `今日 ${auth.quota?.limit || 3} 次免費 AI 生成已用完`);
+      setGenProgress(0, `今日 ${auth.quota?.limit || 5} 次免費 AI 生成已用完`);
       showQuotaExceededModal();
-    } else if (err.code === "AUTH_REQUIRED") {
-      setGenProgress(0, "需要重新登入 LINE");
+    } else if (err.code === "INFLIGHT") {
+      setGenProgress(0, "上一個生成還在跑，等它完成或失敗再點。狂點不會更快、會被擋。");
+    } else if (err.code === "TURNSTILE_FAILED") {
+      setGenProgress(0, "人機驗證失敗，請重新整理頁面再試。");
     } else if (/\b524\b|timeout/i.test(err.message)) {
       setGenProgress(0,
         `Gemini 太慢沒回應（524 timeout）— 你的 quota 沒被扣，直接再按一次「開始生成」就好。85% 機率立刻成功。`,
@@ -915,7 +803,7 @@ async function generateAll() {
 
 function showQuotaExceededModal() {
   const proceed = confirm(
-    `今天的 ${auth.quota?.limit || 3} 次 AI 生成已用完 🥲\n\n` +
+    `今天的 ${auth.quota?.limit || 5} 次 AI 生成已用完 🥲\n\n` +
     "免費替代方案：複製 prompt 自己到 gemini.google.com 跑、把 3×3 圖丟到 BYOG 上傳框。\n\n" +
     "→ 確定：開「自訂 8 格」dialog 複製 prompt\n" +
     "→ 取消：直接捲到 BYOG 上傳框",
@@ -935,18 +823,17 @@ function setGenProgress(pct, text) {
 }
 
 async function fetchGrid(apiUrl, body) {
-  const headers = { "Content-Type": "application/json" };
-  if (auth.token) headers["Authorization"] = `Bearer ${auth.token}`;
   const resp = await fetch(apiUrl, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (resp.status === 401) {
-    clearAuth();
-    refreshAuthUi();
-    const e = new Error("AUTH_REQUIRED");
-    e.code = "AUTH_REQUIRED";
+  // Turnstile token is single-use — burn it whether the request
+  // succeeded or failed and let the widget mint a fresh one.
+  resetTurnstile();
+  if (resp.status === 403) {
+    const e = new Error("TURNSTILE_FAILED");
+    e.code = "TURNSTILE_FAILED";
     throw e;
   }
   if (resp.status === 429) {
@@ -955,8 +842,12 @@ async function fetchGrid(apiUrl, body) {
     auth.quota = payload.quota || auth.quota;
     refreshAuthUi();
     broadcastQuota(payload.quota);
-    const e = new Error("QUOTA_EXCEEDED");
-    e.code = "QUOTA_EXCEEDED";
+    // Worker returns two flavors of 429:
+    //   { error: "in flight" }            → another request is still running
+    //   { error: "daily quota exceeded" } → out of free generations today
+    const isInflight = payload?.error === "in flight";
+    const e = new Error(isInflight ? "INFLIGHT" : "QUOTA_EXCEEDED");
+    e.code = isInflight ? "INFLIGHT" : "QUOTA_EXCEEDED";
     e.payload = payload;
     throw e;
   }
@@ -2231,12 +2122,18 @@ themeGenBtn?.addEventListener("click", async () => {
   themeGenStatus.hidden = false;
   themeGenStatus.textContent = "✨ AI 想中…";
   try {
+    const tsToken = await awaitTurnstileToken();
     const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
     const resp = await fetch(apiUrl.replace(/\/$/, "") + "/generate-themes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description, lang: state.textLang }),
+      body: JSON.stringify({
+        description,
+        lang: state.textLang,
+        turnstileToken: tsToken,
+      }),
     });
+    resetTurnstile();
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
     const { phrases, slots: aiSlots } = await resp.json();
     if (!Array.isArray(phrases) || phrases.length === 0) {
@@ -2439,79 +2336,18 @@ async function copyPromptToGemini() {
 }
 
 // ------------------------------------------------------------------
-// Auth UI wiring
+// Quota UI wiring (no login — just a counter chip)
 
-const authWidget = $("auth-widget");
-const authLoginBtn = $("auth-login-btn");
-const authUserBox = $("auth-user");
-const authAvatar = $("auth-avatar");
-const authName = $("auth-name");
 const authQuotaEl = $("auth-quota");
-const authLogoutBtn = $("auth-logout-btn");
-const authAdminResetBtn = $("auth-admin-reset-btn");
-
-authLoginBtn.addEventListener("click", () => {
-  // Heads up the in-app browser case BEFORE redirect so the user has
-  // a chance to switch to Safari/Chrome instead of bouncing through a
-  // failing flow + getting a confusing error after the fact.
-  if (isLineInAppBrowser()) {
-    const proceed = confirm(
-      "📱 偵測到你正在 LINE 內建瀏覽器中。\n\n" +
-      "LINE 內建瀏覽器跑 LINE Login 常常會失敗（state mismatch），因為授權會跳到外部 app 處理、回來時可能進入新分頁。\n\n" +
-      "👉 推薦解法：點右上角「⋯」→「在 Safari / Chrome 開啟」，再重新登入。\n\n" +
-      "→ 確定：仍要在這個內建瀏覽器試（可能失敗）\n" +
-      "→ 取消：先到外部瀏覽器開"
-    );
-    if (!proceed) return;
-  }
-  startLineLogin();
-});
-authLogoutBtn.addEventListener("click", () => {
-  if (!confirm("登出 LINE? 之後 AI 生成需要重新登入。")) return;
-  clearAuth();
-  refreshAuthUi();
-  broadcastAuthCleared();
-});
-authAdminResetBtn.addEventListener("click", async () => {
-  if (!auth.token) return;
-  const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
-  authAdminResetBtn.disabled = true;
-  try {
-    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/admin/reset-quota", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${auth.token}` },
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
-    await refreshAuth();
-    refreshAuthUi();
-    broadcastQuota(auth.quota);
-    authAdminResetBtn.title = `重設成功！剩餘 ${auth.quota?.limit || 3}/${auth.quota?.limit || 3}`;
-  } catch (err) {
-    alert(`重設失敗：${err.message}`);
-  } finally {
-    authAdminResetBtn.disabled = false;
-  }
-});
 
 function refreshAuthUi() {
-  authWidget.hidden = false;
-  if (auth.user) {
-    authLoginBtn.hidden = true;
-    authUserBox.hidden = false;
-    authAvatar.src = auth.user.pictureUrl || "";
-    authName.textContent = auth.user.displayName || "(LINE user)";
-    if (auth.quota) {
-      const remain = Math.max(0, auth.quota.limit - auth.quota.used);
-      authQuotaEl.textContent = `今日 AI 剩 ${remain} / ${auth.quota.limit}`;
-      authQuotaEl.classList.toggle("full", remain === 0);
-    } else {
-      authQuotaEl.textContent = "";
-    }
-    authAdminResetBtn.hidden = !auth.isAdmin;
+  if (!authQuotaEl) return;
+  if (auth.quota) {
+    const remain = Math.max(0, auth.quota.limit - auth.quota.used);
+    authQuotaEl.textContent = `今日 AI 剩 ${remain} / ${auth.quota.limit}`;
+    authQuotaEl.classList.toggle("full", remain === 0);
   } else {
-    authLoginBtn.hidden = false;
-    authUserBox.hidden = true;
-    authAdminResetBtn.hidden = true;
+    authQuotaEl.textContent = "今日 AI 剩 — / —";
   }
 }
 
@@ -2761,9 +2597,14 @@ rulesAck.checked = localStorage.getItem(RULES_ACK_KEY) === "1";
 rulesAck.addEventListener("change", refreshRulesGate);
 refreshRulesGate();
 (async () => {
-  // Handle redirect-back from LINE OAuth (if URL has ?code=...).
-  await handleOAuthCallback();
-  // Hydrate user from any stored token (validates against worker /me).
-  await refreshAuth();
+  // Hydrate quota counter + Turnstile site key in parallel. Turnstile
+  // script is loaded async by index.html; its onload callback waits
+  // until tsSiteKey is hydrated before rendering the widget.
+  await Promise.all([refreshQuota(), loadTurnstileConfig()]);
   refreshAuthUi();
+  // If Turnstile already loaded before /config returned, kick the
+  // render manually now that the site key is in.
+  if (typeof window !== "undefined" && window.turnstile && auth.tsWidgetId === null) {
+    window.onTurnstileApiReady();
+  }
 })();

@@ -48,90 +48,30 @@ html, body {
   right: 12px;
   z-index: 100;
 }
-
-.auth-login {
-  background: var(--line-green);
-  color: #fff;
-  border: none;
-  border-radius: 999px;
-  padding: 0.55rem 1rem;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  box-shadow: 0 2px 8px rgba(6, 199, 85, 0.35);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.auth-login:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(6, 199, 85, 0.4);
-}
-
-.auth-user {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 8px 4px 4px;
-  box-shadow: var(--shadow);
-  font-size: 0.78rem;
-}
-.auth-user img {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--bg-tint);
-}
 .auth-info {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
-  min-width: 0;
-}
-.auth-name {
-  font-weight: 700;
-  color: var(--text);
-  max-width: 8em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  box-shadow: var(--shadow);
 }
 .auth-quota {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 .auth-quota.full { color: #c0392b; font-weight: 700; }
-.auth-logout {
-  background: transparent;
-  border: none;
-  color: var(--muted);
-  font-size: 0.7rem;
-  cursor: pointer;
-  padding: 4px 6px;
-}
-.auth-logout:hover { color: var(--text); }
 
-.auth-admin-reset {
-  background: #fff7e8;
-  border: 1px solid #f3d38a;
-  color: #6e4c10;
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 50%;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.12s ease;
+/* Cloudflare Turnstile widget host — sits between estimate and the
+   main "Generate" button. The widget itself is ~300×65 in default
+   theme; we just give it a bit of margin so it doesn't crowd the CTA. */
+.cf-turnstile-host {
+  margin: 0.6rem 0;
+  min-height: 65px;
 }
-.auth-admin-reset:hover { transform: scale(1.15); background: #ffe2a3; }
 
 .flash-highlight {
   animation: flashHl 1.5s ease;

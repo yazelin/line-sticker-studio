@@ -78,19 +78,9 @@
      would require region-specific campaigns/prices/URLs, not just i18n.
      i18n framework + I18N dict kept in app.js for future use. -->
 
-<div id="auth-widget" class="auth-widget" hidden>
-  <button id="auth-login-btn" class="auth-login" hidden>
-    <svg class="btn-icon"><use href="#i-sparkle"/></svg>
-    <span data-i18n="auth_login_btn">用 LINE 登入解鎖 AI 生成</span>
-  </button>
-  <div id="auth-user" class="auth-user" hidden>
-    <img id="auth-avatar" alt="" />
-    <div class="auth-info">
-      <div class="auth-name" id="auth-name"></div>
-      <div class="auth-quota" id="auth-quota"></div>
-    </div>
-    <button id="auth-admin-reset-btn" class="auth-admin-reset" title="Admin: reset today's quota" hidden>🔧</button>
-    <button id="auth-logout-btn" class="auth-logout" title="Log out" data-i18n="auth_logout">登出</button>
+<div id="auth-widget" class="auth-widget">
+  <div class="auth-info">
+    <div class="auth-quota" id="auth-quota">今日 AI 剩 — / —</div>
   </div>
 </div>
 <header>
@@ -147,7 +137,7 @@
   <p class="path-picker-hint">① 選一條輸入路徑（A 主流 / B 省 API），然後到 ② 設定樣式</p>
 
   <section class="card" id="step-upload">
-    <h2 data-i18n="step_a_title">🅰 主路徑：上傳角色圖讓 AI 產（每天 3 次免費，需 LINE 登入）</h2>
+    <h2 data-i18n="step_a_title">🅰 主路徑：上傳角色圖讓 AI 產（每天 5 次免費，免登入）</h2>
     <p class="hint">建議：主體清楚、單純背景的正方形圖。AI 會學起來、一次產 8 張同角色不同姿勢/表情的貼圖（LINE 規定的最小套組）。</p>
     <p class="hint coffee-hint">
       <svg class="inline-icon"><use href="#i-coffee"/></svg>
@@ -364,6 +354,13 @@
 
     <div class="estimate" id="estimate"></div>
 
+    <!-- Cloudflare Turnstile — invisible/managed mode. Renders a tiny
+         "verifying you're human" widget once on page load; token is
+         attached to /generate and /generate-themes requests. Sitekey is
+         hydrated from worker /config so the worker config is the single
+         source of truth. -->
+    <div id="cf-turnstile" class="cf-turnstile-host"></div>
+
     <button class="primary" id="generate-btn">
       <svg class="btn-icon"><use href="#i-sparkle"/></svg>
       <span data-i18n="generate_btn">開始生成貼圖</span>
@@ -545,6 +542,7 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileApiReady" defer></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
