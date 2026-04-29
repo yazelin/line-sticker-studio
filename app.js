@@ -388,22 +388,30 @@ async function loadTurnstileConfig() {
   }
 }
 
-// Called by the Turnstile script when it's ready (see ?onload=... in
-// the index.html script tag).
-window.onTurnstileApiReady = function onTurnstileApiReady() {
-  if (!auth.tsSiteKey) {
-    // /config hasn't returned yet — try again shortly.
-    setTimeout(window.onTurnstileApiReady, 200);
-    return;
+// Wait for the Turnstile global to appear, then render the widget.
+// We deliberately DON'T use the api.js?onload=fn pattern — Cloudflare's
+// script can finish loading before app.js executes, and at that point
+// `window.onTurnstileApiReady` is still undefined → it logs a console
+// error and skips render → no token ever appears → every /generate
+// gets 403'd. Polling is uglier but has no race window.
+async function setupTurnstileWidget() {
+  if (!auth.tsSiteKey) return; // /config hasn't returned yet — caller will retry
+  const started = Date.now();
+  while (!window.turnstile) {
+    if (Date.now() - started > 10000) {
+      console.error("Turnstile script failed to load within 10s");
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 100));
   }
-  if (!window.turnstile || auth.tsWidgetId !== null) return;
+  if (auth.tsWidgetId !== null) return; // already rendered
   auth.tsWidgetId = window.turnstile.render("#cf-turnstile", {
     sitekey: auth.tsSiteKey,
     callback: (token) => { auth.tsToken = token; },
     "expired-callback": () => { auth.tsToken = null; },
     "error-callback": () => { auth.tsToken = null; },
   });
-};
+}
 
 // Campaign manifest cache (fetched lazily on first config-step open).
 const campaignCache = { loaded: false, items: [] };
@@ -2620,14 +2628,12 @@ rulesAck.checked = localStorage.getItem(RULES_ACK_KEY) === "1";
 rulesAck.addEventListener("change", refreshRulesGate);
 refreshRulesGate();
 (async () => {
-  // Hydrate quota counter + Turnstile site key in parallel. Turnstile
-  // script is loaded async by index.html; its onload callback waits
-  // until tsSiteKey is hydrated before rendering the widget.
+  // Hydrate quota counter + Turnstile site key in parallel. The
+  // Turnstile widget needs the site key from /config — once we have
+  // it, kick off render. setupTurnstileWidget polls for the global
+  // `window.turnstile` so we don't care whether the api.js script has
+  // finished loading at this point.
   await Promise.all([refreshQuota(), loadTurnstileConfig()]);
   refreshAuthUi();
-  // If Turnstile already loaded before /config returned, kick the
-  // render manually now that the site key is in.
-  if (typeof window !== "undefined" && window.turnstile && auth.tsWidgetId === null) {
-    window.onTurnstileApiReady();
-  }
+  setupTurnstileWidget();
 })();
