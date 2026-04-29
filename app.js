@@ -777,7 +777,7 @@ async function generateAll() {
     $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
     clearInterval(ticker);
-    console.error(err);
+    console.error(err, err.detail ? `detail=${err.detail}` : "");
     if (err.code === "QUOTA_EXCEEDED") {
       setGenProgress(0, `今日 ${auth.quota?.limit || 5} 次免費 AI 生成已用完`);
       showQuotaExceededModal();
