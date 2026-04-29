@@ -784,7 +784,8 @@ async function generateAll() {
     } else if (err.code === "INFLIGHT") {
       setGenProgress(0, "上一個生成還在跑，等它完成或失敗再點。狂點不會更快、會被擋。");
     } else if (err.code === "TURNSTILE_FAILED") {
-      setGenProgress(0, "人機驗證失敗，請重新整理頁面再試。");
+      const reason = err.detail ? `（${err.detail}）` : "";
+      setGenProgress(0, `人機驗證失敗${reason}，重新整理頁面再試一次。`);
     } else if (/\b524\b|timeout/i.test(err.message)) {
       setGenProgress(0,
         `Gemini 太慢沒回應（524 timeout）— 你的 quota 沒被扣，直接再按一次「開始生成」就好。85% 機率立刻成功。`,
@@ -823,18 +824,40 @@ function setGenProgress(pct, text) {
 }
 
 async function fetchGrid(apiUrl, body) {
-  const resp = await fetch(apiUrl, {
+  // Single auto-retry on Turnstile 403: the most common failure is
+  // "timeout-or-duplicate" — the token got consumed by a parallel call
+  // (e.g. the user fired theme-gen while waiting). A fresh token from
+  // the widget normally fixes it without the user noticing.
+  const sendOnce = async (turnstileToken) => fetch(apiUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, turnstileToken }),
   });
-  // Turnstile token is single-use — burn it whether the request
-  // succeeded or failed and let the widget mint a fresh one.
+
+  let resp = await sendOnce(body.turnstileToken);
   resetTurnstile();
   if (resp.status === 403) {
-    const e = new Error("TURNSTILE_FAILED");
-    e.code = "TURNSTILE_FAILED";
-    throw e;
+    let firstReason = "";
+    try { firstReason = (await resp.clone().json())?.detail || ""; } catch {}
+    // Wait for the widget to mint a new token, then try once more.
+    let freshToken;
+    try { freshToken = await awaitTurnstileToken(8000); }
+    catch {
+      const e = new Error("TURNSTILE_FAILED");
+      e.code = "TURNSTILE_FAILED";
+      e.detail = firstReason || "no fresh token after reset";
+      throw e;
+    }
+    resp = await sendOnce(freshToken);
+    resetTurnstile();
+    if (resp.status === 403) {
+      let secondReason = firstReason;
+      try { secondReason = (await resp.clone().json())?.detail || firstReason; } catch {}
+      const e = new Error("TURNSTILE_FAILED");
+      e.code = "TURNSTILE_FAILED";
+      e.detail = secondReason;
+      throw e;
+    }
   }
   if (resp.status === 429) {
     let payload = {};
