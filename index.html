@@ -423,6 +423,14 @@
         <svg class="btn-icon"><use href="#i-scissors"/></svg>
         <span data-i18n="bg_remove_btn">全部去背（chroma key）</span>
       </button>
+      <label class="bg-tune" for="bg-tune-select" title="保守：最不容易吃掉前景綠色；積極：綠背景去更乾淨">
+        去背強度
+        <select id="bg-tune-select" aria-label="去背強度">
+          <option value="safe">保守</option>
+          <option value="balanced" selected>標準</option>
+          <option value="aggressive">積極</option>
+        </select>
+      </label>
       <button class="ghost" id="bg-restore-btn" hidden>
         <svg class="btn-icon"><use href="#i-refresh"/></svg>
         <span data-i18n="bg_restore_btn">還原綠底</span>

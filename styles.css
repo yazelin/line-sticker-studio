@@ -584,8 +584,28 @@ main {
 .preview-actions {
   display: flex;
   gap: 0.5rem;
+  align-items: center;
   flex-wrap: wrap;
   margin-bottom: 0.85rem;
+}
+.bg-tune {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.38rem 0.6rem;
+}
+.bg-tune select {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: inherit;
+  color: var(--text);
+  background: #fff;
+  padding: 0.2rem 0.55rem;
 }
 
 .campaign-picker {

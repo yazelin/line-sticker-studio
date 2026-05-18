@@ -1224,6 +1224,7 @@ const bgRestoreBtn = $("bg-restore-btn");
 const bgProgress = $("bg-progress");
 const bgBarFill = $("bg-bar-fill");
 const bgProgressText = $("bg-progress-text");
+const bgTuneSelect = $("bg-tune-select");
 
 bgRemoveBtn.addEventListener("click", removeAllBackgrounds);
 bgRestoreBtn.addEventListener("click", restoreAllBackgrounds);
@@ -1254,7 +1255,10 @@ async function removeAllBackgrounds() {
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
-      tile.canvas = await bgRemoveWithTextPreserve(tile.originalCanvas);
+      tile.canvas = await bgRemoveWithTextPreserve(
+        tile.originalCanvas,
+        bgTuneSelect?.value || "balanced",
+      );
       tile.transparent = true;
       renderTileIntoCell(i, tile);
     }
@@ -1319,13 +1323,13 @@ function setBgProgress(pct, text) {
 // Always-run is safer: AI path always sends green; BYOG without green
 // is a no-op since chroma key matches no pixels — the image just
 // stays unchanged.)
-async function bgRemoveWithTextPreserve(srcCanvas) {
+async function bgRemoveWithTextPreserve(srcCanvas, tune = "balanced") {
   const w = srcCanvas.width;
   const h = srcCanvas.height;
   const origCtx = srcCanvas.getContext("2d");
   const origData = origCtx.getImageData(0, 0, w, h);
   const orig = origData.data;
-  return chromaKeyGreen(srcCanvas, w, h, orig, "none");
+  return chromaKeyGreen(srcCanvas, w, h, orig, "none", tune);
 }
 
 // Legacy ISNet path retained for reference; never called now.
@@ -1432,33 +1436,163 @@ function detectBgType(orig, w, h) {
   return result;
 }
 
+const CHROMA_TUNE_PROFILES = {
+  safe: { hard: 0.28, soft: 0.15, islandGreenness: 0.50, islandGDom: 1.7, islandSize: 0.12, islandAdjBg: 0.45 },
+  balanced: { hard: 0.25, soft: 0.12, islandGreenness: 0.42, islandGDom: 1.5, islandSize: 0.18, islandAdjBg: 0.35 },
+  aggressive: { hard: 0.22, soft: 0.08, islandGreenness: 0.34, islandGDom: 1.35, islandSize: 0.28, islandAdjBg: 0.22 },
+};
+
+function resolveChromaTuneProfile(tune = "balanced") {
+  return CHROMA_TUNE_PROFILES[tune] || CHROMA_TUNE_PROFILES.balanced;
+}
+
 // Chroma-key out a green (#00FF00) background with anti-alias decontamination.
 // Per-pixel "green-ness" score → linear ramp to alpha.
 // Then subtract green contribution from semi-transparent edge pixels.
-async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
+async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle, tune = "balanced") {
+  const TUNE = resolveChromaTuneProfile(tune);
+
   const out = document.createElement("canvas");
   out.width = w; out.height = h;
   const outCtx = out.getContext("2d");
   const outData = outCtx.createImageData(w, h);
   const od = outData.data;
 
-  let nKeyed = 0, nKept = 0, nPartial = 0;
-  for (let i = 0; i < orig.length; i += 4) {
+  const total = w * h;
+  const hardBg = new Uint8Array(total);
+  const softBg = new Uint8Array(total);
+  const bgConnected = new Uint8Array(total);
+
+  // Build green candidate masks first, then only treat pixels connected
+  // to the frame edge as removable background. This preserves green
+  // foreground objects (e.g. caterpillars) that are not edge-connected.
+  for (let i = 0, p = 0; i < orig.length; i += 4, p++) {
     const r = orig[i], g = orig[i + 1], b = orig[i + 2];
-    // "Greenness ratio" — how much greener than max(R,B), normalized to 0-1.
-    // Pure green = 1.0, neutral = 0, more red/blue = negative.
-    // Asian skin tones: typically negative or near-zero (R > G > B). Safe.
-    // Edge pixels with green bleed: 0.1-0.4. We aggressively kill them
-    // to avoid the green halo around the character silhouette.
     const greenness = (g - Math.max(r, b)) / 255;
-    let alpha;
-    if (greenness > 0.25) {
-      alpha = 0;              // any meaningfully green pixel → transparent
-    } else if (greenness < 0.05) {
-      alpha = 255;            // not green at all → keep
+    if (greenness > TUNE.hard) hardBg[p] = 1;
+    else if (greenness > TUNE.soft) softBg[p] = 1;
+  }
+
+  const q = new Uint32Array(total);
+  let qh = 0, qt = 0;
+  const enqueue = (p) => {
+    if (bgConnected[p] || !(hardBg[p] || softBg[p])) return;
+    bgConnected[p] = 1;
+    q[qt++] = p;
+  };
+  for (let x = 0; x < w; x++) {
+    enqueue(x);
+    enqueue((h - 1) * w + x);
+  }
+  for (let y = 1; y < h - 1; y++) {
+    enqueue(y * w);
+    enqueue(y * w + (w - 1));
+  }
+  while (qh < qt) {
+    const p = q[qh++];
+    const x = p % w;
+    const y = (p - x) / w;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const np = ny * w + nx;
+        if (bgConnected[np] || !(hardBg[np] || softBg[np])) continue;
+        bgConnected[np] = 1;
+        q[qt++] = np;
+      }
+    }
+  }
+
+  // Some true background regions can be "islands" not connected to the
+  // frame edge (e.g. gaps between limbs). Recover those by scanning
+  // disconnected green components and promoting only near-pure,
+  // low-variance green islands to removable background.
+  const disconnected = new Uint8Array(total);
+  for (let p = 0; p < total; p++) {
+    if ((hardBg[p] || softBg[p]) && !bgConnected[p]) disconnected[p] = 1;
+  }
+
+  const seen = new Uint8Array(total);
+  const comp = new Uint32Array(total);
+  const tryPromoteIsland = (seed) => {
+    let head = 0, tail = 0;
+    comp[tail++] = seed;
+    seen[seed] = 1;
+    let sumG = 0, sumR = 0, sumB = 0;
+    let sumGreenness = 0;
+    let touchesEdge = false;
+    let borderAdjBg = 0;
+    let borderAdjTotal = 0;
+    while (head < tail) {
+      const p = comp[head++];
+      const i = p * 4;
+      const r = orig[i], g = orig[i + 1], b = orig[i + 2];
+      const greenness = (g - Math.max(r, b)) / 255;
+      sumR += r; sumG += g; sumB += b;
+      sumGreenness += greenness;
+      const x = p % w;
+      const y = (p - x) / w;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) touchesEdge = true;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const np = ny * w + nx;
+          if (!disconnected[np]) {
+            if (bgConnected[np]) borderAdjBg++;
+            borderAdjTotal++;
+            continue;
+          }
+          if (seen[np]) continue;
+          seen[np] = 1;
+          comp[tail++] = np;
+        }
+      }
+    }
+    if (tail === 0 || touchesEdge) return;
+    const avgR = sumR / tail;
+    const avgG = sumG / tail;
+    const avgB = sumB / tail;
+    const avgGreenness = sumGreenness / tail;
+    const pureEnough =
+      avgGreenness > TUNE.islandGreenness &&
+      avgG > avgR * TUNE.islandGDom &&
+      avgG > avgB * TUNE.islandGDom;
+    // Keep this conservative to avoid deleting green subjects.
+    const sizeOk = tail <= Math.floor(total * TUNE.islandSize);
+    const adjBgRatio = borderAdjTotal ? (borderAdjBg / borderAdjTotal) : 0;
+    const surroundedByBg = adjBgRatio >= TUNE.islandAdjBg;
+    if (pureEnough && sizeOk && surroundedByBg) {
+      for (let k = 0; k < tail; k++) {
+        bgConnected[comp[k]] = 1;
+      }
+    }
+  };
+  for (let p = 0; p < total; p++) {
+    if (disconnected[p] && !seen[p]) tryPromoteIsland(p);
+  }
+
+  let nKeyed = 0, nKept = 0, nPartial = 0;
+  for (let i = 0, p = 0; i < orig.length; i += 4, p++) {
+    const r = orig[i], g = orig[i + 1], b = orig[i + 2];
+    const greenness = (g - Math.max(r, b)) / 255;
+    const removable = bgConnected[p];
+    let alpha = 255;
+    if (removable && greenness > TUNE.hard) {
+      alpha = 0;
+    } else if (removable && greenness > TUNE.soft) {
+      // For edge-connected green fringe, keep a soft ramp to avoid jaggies.
+      alpha = Math.round(255 * (TUNE.hard - greenness) / Math.max(0.01, (TUNE.hard - TUNE.soft)));
+    } else if (!removable && greenness > 0.30) {
+      // Foreground green object: keep fully opaque, skip despill later.
+      alpha = 255;
     } else {
-      // Tight ramp: 0.25→0 to 0.05→255 (only 4-5 pixels of soft edge)
-      alpha = Math.round(255 * (0.25 - greenness) / 0.20);
+      alpha = 255;
     }
     od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
     if (alpha === 0) nKeyed++;
@@ -1470,11 +1604,10 @@ async function chromaKeyGreen(srcCanvas, w, h, orig, outlineStyle) {
     // green is the dominant channel, replace G with (R+B)/2 to kill
     // the green color contamination on edge pixels. Simpler and more
     // visually correct than inverting the alpha-blend formula.
-    if (alpha > 0 && g > r && g > b) {
+    if (alpha > 0 && removable && g > r && g > b) {
       od[i + 1] = (r + b) >> 1;
     }
   }
-  const total = orig.length / 4;
   console.log(`[chroma-key] keyed=${(100*nKeyed/total).toFixed(0)}% kept=${(100*nKept/total).toFixed(0)}% partial=${(100*nPartial/total).toFixed(0)}%`);
 
   // Edge cleanup pass: any partial-alpha pixel adjacent to a fully-
