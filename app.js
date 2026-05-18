@@ -1474,10 +1474,23 @@ function detectBgType(orig, w, h) {
   return result;
 }
 
+// `minKey` is the minimum key-channel intensity required for a pixel to
+// be considered "on the bg plate". Set low (40-60) so that DARK key
+// color (i.e. character shadow cast onto the backdrop — magenta/green
+// bg dimmed by the character blocking studio light) also enters the
+// chroma key path. Without this, the AI's stray shadow pixels stayed
+// as a dark magenta/green halo glued to the character's feet.
+//
+// The dominance ratio (key channel must exceed non-key by 1.45-1.9×)
+// is what protects character pixels from over-removal — even with a
+// low minKey, skin/red/orange/yellow tones don't satisfy the ratio.
+//
+// "aggressive" removes shadows fully; "balanced" leaves a faint trace;
+// "safe" preserves more shadow as semi-transparent. Default = balanced.
 const CHROMA_TUNE_PROFILES = {
-  safe: { hard: 0.32, soft: 0.12, minKey: 170, maxOther: 100, dominance: 1.9 },
-  balanced: { hard: 0.25, soft: 0.05, minKey: 150, maxOther: 110, dominance: 1.7 },
-  aggressive: { hard: 0.20, soft: 0.04, minKey: 130, maxOther: 125, dominance: 1.45 },
+  safe: { hard: 0.32, soft: 0.12, minKey: 60, maxOther: 100, dominance: 1.9 },
+  balanced: { hard: 0.25, soft: 0.05, minKey: 50, maxOther: 110, dominance: 1.7 },
+  aggressive: { hard: 0.20, soft: 0.04, minKey: 40, maxOther: 125, dominance: 1.45 },
 };
 
 function resolveChromaTuneProfile(tune = "balanced") {
