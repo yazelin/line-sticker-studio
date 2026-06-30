@@ -27,7 +27,7 @@ compatibility_date = "2025-01-01"
 [vars]
 GEMINI_WEB_BASE_URL = "https://ching-tech.ddns.net/gemini-web"
 # "1" = AI 直接生成暫停、強制走 BYOG（gemini-web 編輯上傳修好後改回 "0" 重新部署）
-AI_DISABLED = "1"
+AI_DISABLED = "0"
 
 [[kv_namespaces]]
 binding = "QUOTA"
