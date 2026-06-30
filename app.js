@@ -817,7 +817,10 @@ async function generateAll() {
   } catch (err) {
     clearInterval(ticker);
     console.error(err, err.detail ? `detail=${err.detail}` : "");
-    if (err.code === "QUOTA_EXCEEDED") {
+    if (err.code === "AI_DISABLED") {
+      setGenProgress(0, err.detail || "AI 生成暫停中，請走 BYOG 自己跑。");
+      showByogHandoff(err.detail);
+    } else if (err.code === "QUOTA_EXCEEDED") {
       setGenProgress(0, `今日 ${auth.quota?.limit || 5} 次免費 AI 生成已用完`);
       showQuotaExceededModal();
     } else if (err.code === "INFLIGHT") {
@@ -842,9 +845,21 @@ async function generateAll() {
 }
 
 function showQuotaExceededModal() {
+  showByogHandoff(`今天的 ${auth.quota?.limit || 5} 次 AI 生成已用完 🥲`);
+}
+
+// Hand off to the free BYOG path. The critical, easy-to-miss step is that the
+// reference image must be attached in Gemini/ChatGPT alongside the prompt —
+// the prompt alone won't reproduce the user's character.
+function showByogHandoff(headline) {
   const proceed = confirm(
-    `今天的 ${auth.quota?.limit || 5} 次 AI 生成已用完 🥲\n\n` +
-    "免費替代方案：複製 prompt 自己到 gemini.google.com 跑、把 3×3 圖丟到 BYOG 上傳框。\n\n" +
+    (headline ? headline + "\n\n" : "") +
+    "免費替代方案：自己到 gemini.google.com 或 ChatGPT 跑，再把 3×3 圖丟到 BYOG 上傳框。\n\n" +
+    "⚠ 關鍵步驟（少了就生不出你的角色）：\n" +
+    "  1. 複製 prompt\n" +
+    "  2. 在 Gemini／ChatGPT「先上傳你的參考圖」，再貼上 prompt\n" +
+    "     —— prompt 是描述「對這張圖做什麼」，沒附圖 prompt 就無從套用\n" +
+    "  3. 下載它產的 3×3 圖，回來上傳\n\n" +
     "→ 確定：開「自訂 8 格」dialog 複製 prompt\n" +
     "→ 取消：直接捲到 BYOG 上傳框",
   );
@@ -912,6 +927,16 @@ async function fetchGrid(apiUrl, body) {
     e.code = isInflight ? "INFLIGHT" : "QUOTA_EXCEEDED";
     e.payload = payload;
     throw e;
+  }
+  if (resp.status === 503) {
+    let payload = {};
+    try { payload = await resp.json(); } catch {}
+    if (payload?.hint === "byog") {
+      const e = new Error("AI_DISABLED");
+      e.code = "AI_DISABLED";
+      e.detail = payload.message || "";
+      throw e;
+    }
   }
   if (!resp.ok) {
     const detail = await resp.text();
@@ -2492,7 +2517,7 @@ async function copyPromptToGemini() {
     const { prompt } = await resp.json();
     await navigator.clipboard.writeText(prompt);
     slotsCopyStatus.textContent =
-      "✓ 已複製！到 gemini.google.com 貼上 + 附原圖，自己跑可省作者的 API 額度";
+      "✓ 已複製！到 Gemini／ChatGPT 時：先上傳你的參考圖，再貼這段 prompt（沒附圖 prompt 不會套用到你的角色）。";
   } catch (err) {
     console.error(err);
     slotsCopyStatus.textContent = `複製失敗：${err.message}`;

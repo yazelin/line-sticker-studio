@@ -13,12 +13,22 @@ compatibility_date = "2025-01-01"
 #
 # Optional vars (non-secret):
 #   DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
+#   GEMINI_WEB_BASE_URL — self-hosted gemini-web service, e.g.
+#                         https://ching-tech.ddns.net/gemini-web . When set,
+#                         all :generateContent calls route here (google-genai
+#                         compatible) instead of Vertex; auth via GEMINI_API_KEY.
+#   GEMINI_API_KEY      — secret; the key gemini-web validates (x-goog-api-key).
 
 # Daily AI-quota tracking. Create the namespace once:
 #   npx wrangler kv namespace create QUOTA
 # It prints something like:
 #   { binding = "QUOTA", id = "abc123def456..." }
 # Paste the `id` value below.
+[vars]
+GEMINI_WEB_BASE_URL = "https://ching-tech.ddns.net/gemini-web"
+# "1" = AI 直接生成暫停、強制走 BYOG（gemini-web 編輯上傳修好後改回 "0" 重新部署）
+AI_DISABLED = "1"
+
 [[kv_namespaces]]
 binding = "QUOTA"
 id = "3cb1b10b42084aca91151c7884970708"

@@ -10,6 +10,25 @@
 const DEFAULT_MODEL = "gemini-3.1-flash-image-preview";
 const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB decoded image
 
+// Build the :generateContent endpoint + auth headers. Default = Vertex AI.
+// Set GEMINI_WEB_BASE_URL (e.g. https://ching-tech.ddns.net/gemini-web) to
+// route through the self-hosted, browser-driven gemini-web service instead;
+// it's google-genai compatible and authed with x-goog-api-key (GEMINI_API_KEY),
+// same as the stock client. ponytail: env-driven swap, no dual abstraction.
+function genaiCall(env, model) {
+  const base = env.GEMINI_WEB_BASE_URL;
+  if (base) {
+    return {
+      url: `${base.replace(/\/+$/, "")}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY || "" },
+    };
+  }
+  return {
+    url: `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(model)}:generateContent?key=${env.VERTEX_API_KEY}`,
+    headers: { "Content-Type": "application/json" },
+  };
+}
+
 // Daily AI-generation quota per client IP. Tweak freely — only place to
 // change it. Counter resets at UTC midnight. Bumped from 3 → 5 because
 // Taiwan carriers share IPs via CGNAT, so 3 was too tight in practice.
@@ -660,8 +679,8 @@ export default {
     // sticker phrases from a user description. Used by the slot dialog
     // "✨ 用 AI 產 8 句" button to fill custom phrases at once.
     if (url.pathname === "/generate-themes") {
-      if (!env.VERTEX_API_KEY) {
-        return json({ error: "VERTEX_API_KEY missing" }, 500, cors);
+      if (!env.VERTEX_API_KEY && !env.GEMINI_WEB_BASE_URL) {
+        return json({ error: "VERTEX_API_KEY or GEMINI_WEB_BASE_URL missing" }, 500, cors);
       }
       let body;
       try { body = await request.json(); } catch { body = {}; }
@@ -695,7 +714,7 @@ export default {
   {"phrase":"短語2","action":"english action description"},
   ... × 8
 ]`;
-      const apiUrl = `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash:generateContent?key=${env.VERTEX_API_KEY}`;
+      const { url: apiUrl, headers: apiHeaders } = genaiCall(env, "gemini-2.5-flash");
       const payload = {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json" },
@@ -703,7 +722,7 @@ export default {
       try {
         const upstream = await fetch(apiUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: apiHeaders,
           body: JSON.stringify(payload),
         });
         if (!upstream.ok) {
@@ -800,9 +819,27 @@ export default {
       );
     }
 
-    if (!env.VERTEX_API_KEY) {
+    // AI image generation temporarily disabled (e.g. upstream edit broken) —
+    // steer users to the free BYOG path. /prompt above still works, so they
+    // can copy the prompt; flip AI_DISABLED off in wrangler.toml to re-enable.
+    if (env.AI_DISABLED === "1") {
       return json(
-        { error: "server misconfigured: VERTEX_API_KEY missing" },
+        {
+          error: "ai disabled",
+          hint: "byog",
+          message:
+            "AI 直接生成暫停服務中（後端維修）。請走免費 BYOG：到「自訂 8 格」複製 prompt，" +
+            "貼到 Gemini／ChatGPT 時務必「一起附上你的參考圖」，prompt 才會照你的圖生成；" +
+            "拿到 3×3 圖後再上傳回來，會自動切成 8 張 LINE 規格。",
+        },
+        503,
+        cors,
+      );
+    }
+
+    if (!env.VERTEX_API_KEY && !env.GEMINI_WEB_BASE_URL) {
+      return json(
+        { error: "server misconfigured: set VERTEX_API_KEY or GEMINI_WEB_BASE_URL" },
         500,
         cors,
       );
@@ -912,81 +949,135 @@ export default {
             chromaKey,
           });
 
-      const apiUrl = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
+      let outMime, outData;
 
-      const payload = {
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { inlineData: { mimeType, data: imageBase64 } },
-              { text: chosenPrompt },
-            ],
+      if (env.GEMINI_WEB_BASE_URL) {
+        // gemini-web is browser-driven Gemini Web. Its :generateContent only
+        // does TEXT→image and silently drops inlineData, so a sticker request
+        // (photo → 3x3 sheet) must go through /api/edit, the only endpoint
+        // that uploads the reference image. Payload {prompt, reference_image,
+        // timeout}; response {success, images:["data:...base64"], error}.
+        const editUrl = `${env.GEMINI_WEB_BASE_URL.replace(/\/+$/, "")}/api/edit`;
+        let upstream;
+        try {
+          upstream = await fetch(editUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY || "" },
+            body: JSON.stringify({ prompt: chosenPrompt, reference_image: imageBase64, timeout: 360 }),
+          });
+        } catch (err) {
+          await decrementQuota(env, ip);
+          return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
+        }
+        if (!upstream.ok) {
+          const text = await upstream.text();
+          await decrementQuota(env, ip);
+          return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
+        }
+        const data = await upstream.json();
+        const imgs = data?.images || [];
+        if (!data?.success || imgs.length === 0) {
+          // Browser-side failure (content blocked / no image / upload glitch).
+          // Not a billed call — it's our own service — so refund the quota.
+          await decrementQuota(env, ip);
+          return json(
+            {
+              error: data?.error || "no image in response",
+              detail: String(data?.message || data?.detail || "").slice(0, 500),
+              quota: { used: Math.max(0, usedAfter - 1), limit: DAILY_LIMIT },
+            },
+            502,
+            cors,
+          );
+        }
+        const img = imgs[0];
+        if (img.includes(",")) {
+          const [hdr, b64] = img.split(",", 2);
+          outMime = (hdr.match(/data:([^;]+)/) || [])[1] || "image/png";
+          outData = b64;
+        } else {
+          outMime = "image/png";
+          outData = img;
+        }
+      } else {
+        const { url: apiUrl, headers: apiHeaders } = genaiCall(env, chosenModel);
+
+        const payload = {
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inlineData: { mimeType, data: imageBase64 } },
+                { text: chosenPrompt },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseModalities: ["IMAGE"],
+            imageConfig: { aspectRatio: "1:1", imageSize: "2K" },
           },
-        ],
-        generationConfig: {
-          responseModalities: ["IMAGE"],
-          imageConfig: { aspectRatio: "1:1", imageSize: "2K" },
-        },
-      };
+        };
 
-      let upstream;
-      try {
-        upstream = await fetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      } catch (err) {
-        // Network-level failure → didn't hit Vertex. Refund.
-        await decrementQuota(env, ip);
-        return json(
-          { error: "upstream fetch failed", detail: String(err) },
-          502,
-          cors,
-        );
-      }
+        let upstream;
+        try {
+          upstream = await fetch(apiUrl, {
+            method: "POST",
+            headers: apiHeaders,
+            body: JSON.stringify(payload),
+          });
+        } catch (err) {
+          // Network-level failure → didn't hit Vertex. Refund.
+          await decrementQuota(env, ip);
+          return json(
+            { error: "upstream fetch failed", detail: String(err) },
+            502,
+            cors,
+          );
+        }
 
-      if (!upstream.ok) {
-        const text = await upstream.text();
-        // Vertex returned a 4xx/5xx — we may still be billed if it was
-        // 4xx (bad request format), but mostly these are 502/503/524 on
-        // their side. Refund either way; if a 4xx pattern develops we'd
-        // see it in logs and tighten our prompt-builder.
-        await decrementQuota(env, ip);
-        return json(
-          {
-            error: "upstream error",
-            status: upstream.status,
-            detail: text.slice(0, 1500),
-          },
-          502,
-          cors,
-        );
-      }
+        if (!upstream.ok) {
+          const text = await upstream.text();
+          // Vertex returned a 4xx/5xx — we may still be billed if it was
+          // 4xx (bad request format), but mostly these are 502/503/524 on
+          // their side. Refund either way; if a 4xx pattern develops we'd
+          // see it in logs and tighten our prompt-builder.
+          await decrementQuota(env, ip);
+          return json(
+            {
+              error: "upstream error",
+              status: upstream.status,
+              detail: text.slice(0, 1500),
+            },
+            502,
+            cors,
+          );
+        }
 
-      const data = await upstream.json();
-      const parts = data?.candidates?.[0]?.content?.parts || [];
-      const imagePart = parts.find((p) => p.inlineData);
-      if (!imagePart) {
-        // Vertex 200'd but didn't return an image (safety filter / model
-        // quirk). We DID get billed for this. Don't refund — the user's
-        // input triggered a real billable call.
-        return json(
-          {
-            error: "no image in response",
-            raw: JSON.stringify(data).slice(0, 1500),
-            quota: { used: usedAfter, limit: DAILY_LIMIT },
-          },
-          502,
-          cors,
-        );
+        const data = await upstream.json();
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const imagePart = parts.find((p) => p.inlineData);
+        if (!imagePart) {
+          // Vertex 200'd but didn't return an image (safety filter / model
+          // quirk). We DID get billed for this. Don't refund — the user's
+          // input triggered a real billable call.
+          return json(
+            {
+              error: "no image in response",
+              raw: JSON.stringify(data).slice(0, 1500),
+              quota: { used: usedAfter, limit: DAILY_LIMIT },
+            },
+            502,
+            cors,
+          );
+        }
+        outMime = imagePart.inlineData.mimeType || "image/png";
+        outData = imagePart.inlineData.data;
       }
 
       return json(
         {
-          mimeType: imagePart.inlineData.mimeType || "image/png",
-          data: imagePart.inlineData.data,
+          mimeType: outMime,
+          data: outData,
           model: chosenModel,
           phrases: nine.map((s) => s.phrase),
           slots: nine,
