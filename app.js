@@ -703,26 +703,35 @@ styleHintSel.addEventListener("change", () => {
   if (!wrap.hidden) $("style-custom-input")?.focus();
 });
 
-async function generateAll() {
-  if (!state.sourceImage) return;
-  // Resolve effective styleHint: if user picked __custom__, use the
-  // free-form text input verbatim (worker accepts any string).
+// Pull style / withText / chroma from the live controls into state. Both
+// generateAll and the BYOG copy-prompt button call this so the copied prompt
+// always matches what the user currently sees — without it, copy read stale
+// state (e.g. withText from a previous run) and the per-cell text vanished.
+// Returns "" on success, or an error message to surface to the user.
+function syncConfigFromControls() {
+  // styleHint: if user picked __custom__, use the free-form text verbatim.
   if (styleHintSel.value === "__custom__") {
     const customStyle = $("style-custom-input")?.value.trim();
     if (!customStyle || customStyle.length < 2) {
-      alert("請填入至少 2 個字的風格描述（例：「梵谷風」「cyberpunk」）");
-      return;
+      return "請填入至少 2 個字的風格描述（例：「梵谷風」「cyberpunk」）";
     }
     state.styleHint = customStyle;
   } else {
     state.styleHint = styleHintSel.value;
   }
+  state.withText = withTextSel.value === "true";
+  setChromaKey(chromaKeySel?.value || state.chromaKey);
+  return "";
+}
+
+async function generateAll() {
+  if (!state.sourceImage) return;
+  const styleErr = syncConfigFromControls();
+  if (styleErr) { alert(styleErr); return; }
   if (auth.quota && auth.quota.used >= auth.quota.limit) {
     showQuotaExceededModal();
     return;
   }
-  state.withText = withTextSel.value === "true";
-  setChromaKey(chromaKeySel?.value || state.chromaKey);
   state.tiles = [];
   state.bgRemoved = false;
   $("bg-restore-btn").hidden = true;
@@ -2496,8 +2505,14 @@ function refreshSlotStatus() {
 }
 
 async function copyPromptToGemini() {
-  const cfg = readSlotConfigFromGrid();
+  const styleErr = syncConfigFromControls();
   slotsCopyStatus.hidden = false;
+  if (styleErr) {
+    slotsCopyStatus.textContent = styleErr;
+    setTimeout(() => { slotsCopyStatus.hidden = true; }, 8000);
+    return;
+  }
+  const cfg = readSlotConfigFromGrid();
   slotsCopyStatus.textContent = "正在組 prompt…";
   try {
     const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
