@@ -7,7 +7,23 @@
 ~USD 0.04、約 50 秒。
 
 > 🟢 線上版：<https://yazelin.github.io/line-sticker-studio/>
-> 架構參考姊妹工具 [emoji-slot-machine](https://github.com/yazelin/emoji-slot-machine)。
+
+## 與姊妹專案 emoji-slot-machine 的差異
+
+兩個專案共用**同一套核心引擎**（上傳角色圖 → 打 gemini-web `/api/edit` → 取回
+3×3 → 前端拆格），但長成兩個不同產品：
+
+| | 本專案 line-sticker-studio | 姊妹 [emoji-slot-machine](https://github.com/yazelin/emoji-slot-machine) |
+|---|---|---|
+| 定位 | 靜態 **LINE 貼圖 → 去背 → 上架** | 表情**拉霸 → 動態 reel 影片** |
+| 每格內容 | 8 格**可帶文字短語** + 表情，有 AI 主題產短語 | 9 種表情（36 情緒 + 9 天氣隨機配對），**不印文字** |
+| 輸出 | **chroma-key 去背 → 透明 PNG → JSZip 打包** → LINE Creators Market 上架 | `MediaRecorder` 錄成 **WebM 拉霸影片** |
+| 格數 | 3×3 產 9、取 **8**（LINE 套組） | 3×3 = 9 |
+| 人機驗證 | **有 Turnstile** | **無 Turnstile**（靠每日配額 + in-flight 鎖限流） |
+| Prompt | LINE 審核合規規則 + 風格轉換 + 每格印字 | 表情 + 天氣配對、強制沿用原圖畫風 |
+
+**共通後端**（兩邊皆已遷移）：Cloudflare Worker → 自架 gemini-web `/api/edit`
+（未設則 fallback Vertex），每日配額 5 次/IP + in-flight 鎖，`AI_DISABLED` 急停開關。
 
 ## ✨ 特色
 
