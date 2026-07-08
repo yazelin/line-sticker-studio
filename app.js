@@ -2083,6 +2083,9 @@ function startNewProjectIdentity() {
   state.projectId = null;
   state.projectName = "";
   state.projectCreatedAt = 0;
+  // A fresh draft starts at the default pack size — leaving a stale 16/24
+  // from the previous project makes an 8-tile pool undownloadable.
+  state.packSize = 8;
 }
 
 async function openProject(id) {
