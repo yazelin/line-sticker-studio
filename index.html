@@ -208,6 +208,10 @@
         <button type="button" class="assets-filter" data-filter="starred">⭐ 收藏</button>
       </div>
       <button type="button" class="ghost" id="assets-import-btn">匯入 3×3 圖（可多選）</button>
+      <button type="button" class="ghost" id="vault-export-btn" title="把素材庫+專案+Library 打包成一個 zip 帶走（換機/備份）">📦 匯出整庫</button>
+      <label class="ghost file-btn" title="匯入之前匯出的整庫 zip（合併，不會清掉現有資料）">📥 匯入整庫
+        <input type="file" id="vault-import-input" accept=".zip" hidden />
+      </label>
       <span class="hint mini" id="storage-usage"></span>
     </div>
 

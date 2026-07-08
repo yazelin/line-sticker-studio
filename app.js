@@ -3776,6 +3776,126 @@ $("style-save-btn")?.addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------------
+// Vault export / import (issue #28) — the user's data is THEIRS: one
+// zip carries assets + projects + library across machines. Import is a
+// MERGE: existing ids are kept, new ids are added (idempotent).
+
+async function exportVault() {
+  if (!window.JSZip) { alert("JSZip 未載入"); return; }
+  const zip = new JSZip();
+  const generations = await idbListGenerations();
+  const manifest = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    generations: [],
+    projects: await idbAllFrom("projects"),
+    prompts: await idbAllFrom("prompts"),
+    phraseSets: await idbAllFrom("phraseSets"),
+    styles: await idbAllFrom("styles"),
+    fonts: [],
+  };
+  for (const e of generations) {
+    manifest.generations.push({
+      id: e.id, source: e.source, timestamp: e.timestamp,
+      name: e.name, starred: e.starred, metadata: e.metadata,
+      gridFile: `assets/${e.id}.png`,
+      thumbFile: `assets/${e.id}.thumb.jpg`,
+    });
+    zip.file(`assets/${e.id}.png`, e.gridBlob);
+    if (e.thumbnailBlob) zip.file(`assets/${e.id}.thumb.jpg`, e.thumbnailBlob);
+  }
+  try {
+    for (const f of await idbAllFrom("fonts")) {
+      manifest.fonts.push({ name: f.name, file: `fonts/${f.name}.bin` });
+      zip.file(`fonts/${f.name}.bin`, f.blob);
+    }
+  } catch { /* fonts store empty */ }
+  zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+  const blob = await zip.generateAsync({ type: "blob" });
+  const stamp = new Date().toISOString().slice(0, 10);
+  triggerDownload(blob, `sticker-studio-vault-${stamp}.zip`);
+  showToast(`✓ 已匯出整庫（${manifest.generations.length} 張 grid、${manifest.projects.length} 個專案）`);
+}
+
+async function importVault(file) {
+  if (!window.JSZip) { alert("JSZip 未載入"); return; }
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(file);
+  } catch {
+    alert("這不是有效的 zip 檔");
+    return;
+  }
+  const manifestFile = zip.file("manifest.json");
+  if (!manifestFile) { alert("zip 裡沒有 manifest.json — 不是本工具匯出的整庫"); return; }
+  let manifest;
+  try {
+    manifest = JSON.parse(await manifestFile.async("string"));
+  } catch {
+    alert("manifest.json 解析失敗");
+    return;
+  }
+  const counts = { grids: 0, projects: 0, library: 0, fonts: 0, skipped: 0 };
+
+  for (const g of manifest.generations || []) {
+    if (await idbGetGeneration(g.id)) { counts.skipped++; continue; }
+    const gridEntry = zip.file(g.gridFile);
+    if (!gridEntry) { counts.skipped++; continue; }
+    const gridBlob = new Blob([await gridEntry.async("arraybuffer")], { type: "image/png" });
+    const thumbEntry = g.thumbFile ? zip.file(g.thumbFile) : null;
+    const thumbnailBlob = thumbEntry
+      ? new Blob([await thumbEntry.async("arraybuffer")], { type: "image/jpeg" })
+      : await generateThumbnail(gridBlob);
+    await idbSaveGeneration({
+      id: g.id, source: g.source || "byog", timestamp: g.timestamp || Date.now(),
+      name: g.name || null, starred: Boolean(g.starred),
+      metadata: g.metadata || {}, gridBlob, thumbnailBlob,
+    });
+    counts.grids++;
+  }
+  for (const p of manifest.projects || []) {
+    if (await idbGetFrom("projects", p.id)) { counts.skipped++; continue; }
+    await idbPut("projects", p);
+    counts.projects++;
+  }
+  for (const [store, key] of [["prompts", "prompts"], ["phraseSets", "phraseSets"], ["styles", "styles"]]) {
+    for (const item of manifest[key] || []) {
+      if (await idbGetFrom(store, item.id)) { counts.skipped++; continue; }
+      await idbPut(store, item);
+      counts.library++;
+    }
+  }
+  for (const f of manifest.fonts || []) {
+    if (await idbGetFrom("fonts", f.name)) { counts.skipped++; continue; }
+    const entry = zip.file(f.file);
+    if (!entry) continue;
+    const blob = new Blob([await entry.async("arraybuffer")]);
+    await idbPut("fonts", { id: f.name, name: f.name, blob });
+    try { await registerUploadedFont(f.name, blob); } catch { /* bad font */ }
+    counts.fonts++;
+  }
+
+  await renderHistoryUi();
+  await renderCurrentGridUi();
+  await renderProjectBar();
+  await renderPromptHistory();
+  await renderPhraseSetSelect();
+  await renderSavedStyles();
+  rebuildFontSelect();
+  showToast(
+    `✓ 匯入完成：grid +${counts.grids}、專案 +${counts.projects}、Library +${counts.library}、字型 +${counts.fonts}` +
+    (counts.skipped ? `（已存在略過 ${counts.skipped}）` : ""),
+  );
+}
+
+$("vault-export-btn")?.addEventListener("click", () => exportVault());
+$("vault-import-input")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  if (file) await importVault(file);
+  e.target.value = "";
+});
+
+// ------------------------------------------------------------------
 // Quota UI wiring (no login — just a counter chip)
 
 const authQuotaEl = $("auth-quota");
