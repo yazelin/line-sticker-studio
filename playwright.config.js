@@ -9,6 +9,7 @@ export default defineConfig({
   reporter: process.env.CI ? "list" : [["list"]],
   use: {
     baseURL: "http://127.0.0.1:8917",
+    locale: "zh-TW",
   },
   webServer: {
     command: "python3 -m http.server 8917 --bind 127.0.0.1",

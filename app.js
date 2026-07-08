@@ -274,6 +274,7 @@ function setLang(lang) {
   localStorage.setItem(LANG_KEY, lang);
   document.documentElement.lang = lang;
   applyI18n();
+  renderThemeChips();
 }
 const ESTIMATED_GRID_SECONDS = 50; // per 3×3 grid
 // LINE Creators Market accepts only 8/16/24/32/40 stickers per pack —
@@ -2754,6 +2755,52 @@ slotsCopyBtn.addEventListener("click", copyPromptToGemini);
 const themeInput = $("theme-input");
 const themeGenBtn = $("theme-gen-btn");
 const themeGenStatus = $("theme-gen-status");
+
+// Occupation / scene quick-entry chips (issue #10) — one tap seeds the
+// theme input; generation still needs an explicit button press (it costs
+// a worker call). Labels: zh for zh-* UI languages, en otherwise.
+// (語錄由 /generate-themes 動態產生，非靜態文案庫。)
+const THEME_CHIPS = [
+  { zh: "上班族日常", en: "office worker daily life" },
+  { zh: "上班摸魚中", en: "slacking off at work" },
+  { zh: "老師的心聲", en: "teacher's inner voice" },
+  { zh: "學生期末爆炸", en: "student during finals" },
+  { zh: "健身教練", en: "fitness coach" },
+  { zh: "工程師 debug 人生", en: "engineer debugging life" },
+  { zh: "家庭主婦戰場", en: "stay-home parent chaos" },
+  { zh: "貓奴日常", en: "cat servant daily" },
+  { zh: "狗派生活", en: "dog person life" },
+  { zh: "餐飲店員尖峰", en: "restaurant staff rush hour" },
+  { zh: "醫護人員日常", en: "healthcare worker daily" },
+  { zh: "業務衝業績", en: "sales hustle" },
+  { zh: "自由工作者", en: "freelancer life" },
+  { zh: "電商小編", en: "social media editor" },
+  { zh: "遊戲玩家時刻", en: "gamer moments" },
+  { zh: "情侶放閃", en: "lovey-dovey couple" },
+];
+
+function themeChipLabel(chip) {
+  return currentLang.startsWith("zh") ? chip.zh : chip.en;
+}
+
+function renderThemeChips() {
+  const wrap = $("theme-chips");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  for (const chip of THEME_CHIPS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "theme-chip";
+    b.textContent = themeChipLabel(chip);
+    b.addEventListener("click", () => {
+      if (themeInput) {
+        themeInput.value = themeChipLabel(chip);
+        themeInput.focus();
+      }
+    });
+    wrap.appendChild(b);
+  }
+}
 themeGenBtn?.addEventListener("click", async () => {
   const description = themeInput.value.trim();
   if (!description) {
@@ -3219,6 +3266,7 @@ refreshEstimate();
 refreshSlotStatus();
 refreshTextLangAvailability();
 renderPackSizeChips();
+renderThemeChips();
 // step-config is always visible now (so BYOG users can use settings dialog
 // to copy prompt for Gemini), so eager-load campaigns at boot.
 ensureCampaignsLoaded().then(renderCampaignPicker);

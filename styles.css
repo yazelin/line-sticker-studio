@@ -1305,6 +1305,29 @@ button, .primary, .ghost {
 }
 .tile-download:hover { background: #fff; transform: scale(1.1); }
 
+/* --- Theme quick-entry chips (issue #10) --- */
+
+.theme-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0.35rem 0 0.55rem;
+}
+.theme-chip {
+  padding: 0.28rem 0.7rem;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.theme-chip:hover {
+  border-color: var(--line-green);
+  background: var(--line-green-soft);
+}
+
 /* --- Tile zoom dialog (issue #6) --- */
 
 .tile-dialog {
