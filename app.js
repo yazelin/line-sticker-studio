@@ -13,8 +13,12 @@ const $ = (id) => document.getElementById(id);
 // unlimited starred.
 // ==================================================================
 const IDB_NAME = "line-sticker-history";
-const IDB_VERSION = 1;
+// v2 (2026-07-09): projects / fonts / prompts / phraseSets / styles —
+// all studio stores created in one bump so later features don't need
+// another migration.
+const IDB_VERSION = 2;
 const IDB_STORE = "generations";
+const IDB_EXTRA_STORES = ["projects", "fonts", "prompts", "phraseSets", "styles"];
 const HISTORY_NONSTARRED_CAP = 30;
 
 let _idbPromise = null;
@@ -27,20 +31,48 @@ function idbOpen() {
       if (!db.objectStoreNames.contains(IDB_STORE)) {
         db.createObjectStore(IDB_STORE, { keyPath: "id" });
       }
+      for (const name of IDB_EXTRA_STORES) {
+        if (!db.objectStoreNames.contains(name)) {
+          db.createObjectStore(name, { keyPath: "id" });
+        }
+      }
     };
     req.onsuccess = () => res(req.result);
     req.onerror = () => rej(req.error);
   });
   return _idbPromise;
 }
-function idbTx(mode, fn) {
+function idbTx(mode, fn, storeName = IDB_STORE) {
   return idbOpen().then((db) => new Promise((res, rej) => {
-    const tx = db.transaction(IDB_STORE, mode);
-    const store = tx.objectStore(IDB_STORE);
+    const tx = db.transaction(storeName, mode);
+    const store = tx.objectStore(storeName);
     const result = fn(store);
     tx.oncomplete = () => res(result);
     tx.onerror = () => rej(tx.error);
   }));
+}
+// Generic single-record helpers for the studio stores.
+async function idbPut(storeName, obj) {
+  return idbTx("readwrite", (s) => s.put(obj), storeName);
+}
+async function idbGetFrom(storeName, id) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction(storeName).objectStore(storeName).get(id);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbAllFrom(storeName) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction(storeName).objectStore(storeName).getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbDelFrom(storeName, id) {
+  return idbTx("readwrite", (s) => s.delete(id), storeName);
 }
 async function idbSaveGeneration(entry) {
   return idbTx("readwrite", (s) => s.put(entry));
@@ -493,6 +525,9 @@ const state = {
   campaign: null,        // null or campaign id
   slotConfig: loadSlotConfig(), // length-PACK_SIZE
   tiles: [],             // sticker POOL — tiles from one or more grids (makeTile)
+  projectId: null,       // active project (autosaved draft); null = unsaved
+  projectName: "",
+  projectCreatedAt: 0,
   packSize: 8,           // target LINE pack size (8/16/24/32/40)
   mainTile: null,        // tile ref chosen as main.png (null = first included)
   tabTile: null,         // tile ref chosen as tab.png (null = follow main)
@@ -750,6 +785,7 @@ async function generateAll() {
   state.mainTile = null;
   state.tabTile = null;
   state.bgRemoved = false;
+  startNewProjectIdentity();
   $("bg-restore-btn").hidden = true;
 
   const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
@@ -828,6 +864,8 @@ async function generateAll() {
       state.tiles.push(makeTile(tiles[i], {
         phrase: result.phrases?.[i] || "",
         included: i < PACK_SIZE,
+        srcGridId: state.currentGridId,
+        srcIdx: i,
       }));
     }
     renderPool();
@@ -1019,6 +1057,7 @@ async function handleGridUploads(fileList) {
   state.mainTile = null;
   state.tabTile = null;
   state.bgRemoved = false;
+  startNewProjectIdentity();
   $("bg-restore-btn").hidden = true;
   document.body.classList.add("byog-mode");
 
@@ -1031,7 +1070,13 @@ async function handleGridUploads(fileList) {
       chromaKey: state.chromaKey,
     });
     const tiles = await splitGrid(img);
-    for (const t of tiles) state.tiles.push(makeTile(t, { included: false }));
+    for (let i = 0; i < tiles.length; i++) {
+      state.tiles.push(makeTile(tiles[i], {
+        included: false,
+        srcGridId: state.currentGridId,
+        srcIdx: i,
+      }));
+    }
   }
   // Auto-fit pack size, pre-select from the front.
   state.packSize = bestPackSizeFor(state.tiles.length);
@@ -1175,6 +1220,7 @@ async function handleGridUpload(file) {
   state.mainTile = null;
   state.tabTile = null;
   state.bgRemoved = false;
+  startNewProjectIdentity();
   $("bg-restore-btn").hidden = true;
   document.body.classList.add("byog-mode");
 
@@ -1193,7 +1239,11 @@ async function handleGridUpload(file) {
 
   const tiles = await splitGrid(img);
   for (let i = 0; i < GRID_SIZE; i++) {
-    state.tiles.push(makeTile(tiles[i], { included: i < PACK_SIZE }));
+    state.tiles.push(makeTile(tiles[i], {
+      included: i < PACK_SIZE,
+      srcGridId: state.currentGridId,
+      srcIdx: i,
+    }));
   }
   renderPool();
   $("step-download").hidden = false;
@@ -1205,12 +1255,15 @@ async function handleGridUpload(file) {
 // cleaning ALWAYS recomputes from that original (never re-keys an
 // already-keyed result — despill would stack into dirty edges).
 
-function makeTile(canvas, { phrase = "", included = false } = {}) {
+function makeTile(canvas, { phrase = "", included = false, srcGridId = null, srcIdx = -1 } = {}) {
   return {
     canvas,                  // current pixels (may be cleaned)
     originalCanvas: canvas,  // pristine split — the only cleanup input
     transparent: false,
     cleanParams: null,       // { key, tune } when cleaned
+    textParams: null,        // text overlay (issue #8)
+    srcGridId,               // history/asset grid this tile came from
+    srcIdx,                  // 0-8 position inside that grid
     phrase,
     busy: false,
     included,
@@ -1488,6 +1541,7 @@ function refreshSelectionStatus() {
     sel.className = "selection-status over";
   }
   renderPackSizeChips();
+  scheduleProjectSave();
 }
 
 // ------------------------------------------------------------------
@@ -1576,6 +1630,8 @@ async function appendFromHistory(id) {
     state.tiles.push(makeTile(tiles[i], {
       phrase: e.metadata?.phrases?.[i] || "",
       included: false,
+      srcGridId: e.id,
+      srcIdx: i,
     }));
   }
   $("step-preview").hidden = false;
@@ -1611,6 +1667,150 @@ switchTab(location.hash.slice(1) || "create", { push: false });
 
 function refreshPoolPresence() {
   document.body.classList.toggle("has-pool", state.tiles.length > 0);
+}
+
+// ------------------------------------------------------------------
+// Projects — the pool persists as a project (issue #25). Slots store
+// (gridId, tileIdx, params) only; pixels always re-derive from the
+// source grid in history, cleanup recomputed from originals.
+
+const LAST_PROJECT_KEY = "line-sticker-last-project";
+
+function defaultProjectName() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `未命名專案 ${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function serializeProject() {
+  return {
+    id: state.projectId,
+    name: state.projectName,
+    packSize: state.packSize,
+    slots: state.tiles.map((t) => ({
+      gridId: t.srcGridId,
+      tileIdx: t.srcIdx,
+      included: t.included,
+      cleanParams: t.cleanParams || null,
+      textParams: t.textParams || null,
+    })),
+    mainSlot: state.tiles.indexOf(state.mainTile),
+    tabSlot: state.tiles.indexOf(state.tabTile),
+    createdAt: state.projectCreatedAt || Date.now(),
+    updatedAt: Date.now(),
+  };
+}
+
+let _projectSaveTimer = null;
+function scheduleProjectSave() {
+  if (state.tiles.length === 0) return;   // never create ghost projects
+  clearTimeout(_projectSaveTimer);
+  _projectSaveTimer = setTimeout(() => { saveProjectNow(); }, 700);
+}
+
+async function saveProjectNow() {
+  if (state.tiles.length === 0) return;
+  if (state.tiles.some((t) => !t.srcGridId)) return; // no provenance → skip
+  if (!state.projectId) {
+    state.projectId = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    state.projectCreatedAt = Date.now();
+    if (!state.projectName) state.projectName = defaultProjectName();
+  }
+  await idbPut("projects", serializeProject());
+  localStorage.setItem(LAST_PROJECT_KEY, state.projectId);
+  renderProjectBar();
+}
+
+// Start a fresh (unsaved) project identity — used when a replace-style
+// load happens so the PREVIOUS project isn't silently overwritten.
+function startNewProjectIdentity() {
+  state.projectId = null;
+  state.projectName = "";
+  state.projectCreatedAt = 0;
+}
+
+async function openProject(id) {
+  const p = await idbGetFrom("projects", id);
+  if (!p) return false;
+  // Load each referenced grid once, split, then rebuild slots in order.
+  const splits = new Map();
+  for (const slot of p.slots) {
+    if (splits.has(slot.gridId)) continue;
+    const e = slot.gridId ? await idbGetGeneration(slot.gridId) : null;
+    splits.set(slot.gridId, e
+      ? await splitGrid(await loadImage(URL.createObjectURL(e.gridBlob)))
+      : null);
+  }
+  const tiles = [];
+  let dropped = 0;
+  for (const slot of p.slots) {
+    const split = splits.get(slot.gridId);
+    if (!split || !split[slot.tileIdx]) { dropped++; continue; }
+    const t = makeTile(split[slot.tileIdx], {
+      included: slot.included,
+      srcGridId: slot.gridId,
+      srcIdx: slot.tileIdx,
+    });
+    t.textParams = slot.textParams || null;
+    t._pendingClean = slot.cleanParams || null;
+    tiles.push(t);
+  }
+  state.tiles = tiles;
+  state.packSize = PACK_SIZES.includes(p.packSize) ? p.packSize : 8;
+  state.projectId = p.id;
+  state.projectName = p.name || "";
+  state.projectCreatedAt = p.createdAt || Date.now();
+  state.mainTile = tiles[p.mainSlot] || null;
+  state.tabTile = tiles[p.tabSlot] || null;
+  state.bgRemoved = false;
+  // Re-apply per-tile cleanup from ORIGINALS (never persisted pixels).
+  for (const t of tiles) {
+    if (t._pendingClean) {
+      await cleanTile(t, t._pendingClean);
+      delete t._pendingClean;
+    }
+  }
+  const has = tiles.length > 0;
+  $("step-preview").hidden = !has;
+  $("step-download").hidden = !has;
+  renderPool();
+  localStorage.setItem(LAST_PROJECT_KEY, p.id);
+  if (dropped > 0) showToast(`有 ${dropped} 格的來源 grid 已不在素材庫，已略過`);
+  renderProjectBar();
+  return true;
+}
+
+async function renderProjectBar() {
+  const sel = $("project-select");
+  const nameInput = $("project-name");
+  if (!sel || !nameInput) return;
+  const all = (await idbAllFrom("projects")).sort((a, b) => b.updatedAt - a.updatedAt);
+  sel.innerHTML = "";
+  sel.appendChild(new Option("（新草稿）", ""));
+  for (const p of all) {
+    sel.appendChild(new Option(`${p.name || p.id}（${p.slots.length} 格）`, p.id));
+  }
+  sel.value = state.projectId || "";
+  if (document.activeElement !== nameInput) {
+    nameInput.value = state.projectName || "";
+  }
+}
+
+async function restoreLastProject() {
+  const id = localStorage.getItem(LAST_PROJECT_KEY);
+  if (!id) { renderProjectBar(); return; }
+  const restored = await openProject(id).catch(() => false);
+  if (!restored) {
+    localStorage.removeItem(LAST_PROJECT_KEY);
+    renderProjectBar();
+  }
+}
+
+// How many projects reference a given grid — used to warn before delete
+// and to protect referenced grids from history pruning.
+async function projectsReferencingGrid(gridId) {
+  const all = await idbAllFrom("projects");
+  return all.filter((p) => p.slots.some((s) => s.gridId === gridId));
 }
 
 // Pool-mutating async loads are serialized through this queue — without
@@ -1729,11 +1929,25 @@ async function rerollTile(idx, overridePhrase = null) {
     const gridImg = await loadImage(
       `data:${result.mimeType};base64,${result.data}`,
     );
+    // Persist the reroll grid to history too — without a gridId this
+    // slot could never be saved into a project.
+    const binStr = atob(result.data);
+    const binBytes = new Uint8Array(binStr.length);
+    for (let i = 0; i < binStr.length; i++) binBytes[i] = binStr.charCodeAt(i);
+    state.lastGridPng = new Blob([binBytes], { type: result.mimeType });
+    await saveCurrentGridToHistory("ai", {
+      styleHint: state.styleHint,
+      reroll: true,
+      phrases: result.phrases,
+      chromaKey: state.chromaKey,
+    });
     const tiles = await splitGrid(gridImg);
     // The pinned phrase landed in slot 0 (top-left of the new grid).
     state.tiles[idx] = makeTile(tiles[0], {
       phrase: effectivePhrase || result.phrases?.[0] || tile.phrase,
       included: tile.included,  // preserve selection
+      srcGridId: state.currentGridId,
+      srcIdx: 0,
     });
     // Re-rerolled tiles have white bg again — bgRemoved no longer guaranteed.
     if (state.bgRemoved) state.bgRemoved = false;
@@ -1789,6 +2003,7 @@ async function removeAllBackgrounds() {
     state.bgRemoved = true;
     setBgProgress(100, `完成！${state.tiles.length} 張已去背。`);
     bgRestoreBtn.hidden = false;
+    scheduleProjectSave();
   } catch (err) {
     console.error(err);
     setBgProgress(0, `去背失敗：${err.message}`);
@@ -1808,6 +2023,7 @@ async function restoreAllBackgrounds() {
   }
   state.bgRemoved = false;
   bgRestoreBtn.hidden = true;
+  scheduleProjectSave();
   const key = chromaKeyColor();
   setBgProgress(0, `已還原成 Gemini 原圖（${key.label} ${key.hex} + 黑邊）。可重新去背。`);
 }
@@ -3139,7 +3355,12 @@ async function saveCurrentGridToHistory(source, metadata) {
 }
 async function pruneHistory() {
   const all = await idbListGenerations();
-  const nonStarred = all.filter((e) => !e.starred);
+  // Grids referenced by any project are protected from auto-pruning —
+  // deleting them would silently hollow out saved projects.
+  const projects = await idbAllFrom("projects");
+  const referenced = new Set();
+  for (const p of projects) for (const s of p.slots) referenced.add(s.gridId);
+  const nonStarred = all.filter((e) => !e.starred && !referenced.has(e.id));
   nonStarred.sort((a, b) => b.timestamp - a.timestamp);
   for (const e of nonStarred.slice(HISTORY_NONSTARRED_CAP)) {
     await idbDeleteGeneration(e.id);
@@ -3226,7 +3447,11 @@ function buildHistoryCard(e) {
     triggerDownload(e.gridBlob, `grid-${e.name ? e.name.replace(/\W+/g, "_") : e.id}.png`);
   };
   card.querySelector(".act-delete").onclick = async () => {
-    if (!confirm("刪除這張 grid?")) return;
+    const refs = await projectsReferencingGrid(e.id);
+    const warn = refs.length
+      ? `有 ${refs.length} 個專案（${refs.map((p) => p.name || p.id).join("、")}）用到這張 grid，刪除後那些格子將無法還原。\n\n仍要刪除？`
+      : "刪除這張 grid?";
+    if (!confirm(warn)) return;
     await idbDeleteGeneration(e.id);
     if (state.currentGridId === e.id) {
       state.currentGridId = null;
@@ -3299,6 +3524,7 @@ async function loadFromHistory(id) {
   state.mainTile = null;
   state.tabTile = null;
   state.bgRemoved = false;
+  startNewProjectIdentity();
   if (e.metadata?.styleHint) state.styleHint = e.metadata.styleHint;
   if (e.metadata?.campaign !== undefined) state.campaign = e.metadata.campaign;
   if (e.metadata?.withText !== undefined) state.withText = e.metadata.withText;
@@ -3313,6 +3539,8 @@ async function loadFromHistory(id) {
     state.tiles.push(makeTile(tiles[i], {
       phrase: e.metadata?.phrases?.[i] || "",
       included: i < PACK_SIZE,
+      srcGridId: e.id,
+      srcIdx: i,
     }));
   }
   renderPool();
@@ -3328,6 +3556,48 @@ refreshSlotStatus();
 refreshTextLangAvailability();
 renderPackSizeChips();
 renderThemeChips();
+
+// --- Project bar wiring (issue #25) ---
+$("project-select")?.addEventListener("change", (e) => {
+  const id = e.target.value;
+  if (!id) return; //「新草稿」占位 — 用「新增」按鈕開新專案
+  queuePoolOp(() => openProject(id));
+});
+$("project-name")?.addEventListener("change", async (e) => {
+  state.projectName = e.target.value.trim();
+  if (state.tiles.length > 0) await saveProjectNow();
+});
+$("project-new")?.addEventListener("click", () => {
+  if (state.tiles.length > 0 &&
+      !confirm("開新專案會清空目前貼圖池（目前專案已自動儲存，隨時可切回）。繼續？")) {
+    return;
+  }
+  state.tiles = [];
+  state.mainTile = null;
+  state.tabTile = null;
+  startNewProjectIdentity();
+  $("step-preview").hidden = true;
+  $("step-download").hidden = true;
+  renderPool();
+  renderProjectBar();
+  showToast("已開新草稿 — 從企劃生圖或素材庫加格子進來");
+});
+$("project-delete")?.addEventListener("click", async () => {
+  if (!state.projectId) { showToast("目前是未儲存的草稿，沒有可刪的專案"); return; }
+  if (!confirm(`刪除專案「${state.projectName || state.projectId}」？素材庫的 grid 不受影響。`)) return;
+  await idbDelFrom("projects", state.projectId);
+  if (localStorage.getItem(LAST_PROJECT_KEY) === state.projectId) {
+    localStorage.removeItem(LAST_PROJECT_KEY);
+  }
+  state.tiles = [];
+  state.mainTile = null;
+  state.tabTile = null;
+  startNewProjectIdentity();
+  $("step-preview").hidden = true;
+  $("step-download").hidden = true;
+  renderPool();
+  renderProjectBar();
+});
 // step-config is always visible now (so BYOG users can use settings dialog
 // to copy prompt for Gemini), so eager-load campaigns at boot.
 ensureCampaignsLoaded().then(renderCampaignPicker);
@@ -3337,6 +3607,8 @@ ensurePoolLoaded();
 // Eager-load grid history (will show 🅱 carousel + last loaded grid).
 renderCurrentGridUi();
 renderHistoryUi();
+// Restore the last active project (multi-project, issue #25).
+queuePoolOp(() => restoreLastProject());
 
 // LINE rules acknowledgment — gate both upload boxes until user checks.
 const RULES_ACK_KEY = "line-sticker-rules-acked";

@@ -473,6 +473,14 @@
 
   <section class="card" id="step-preview" data-workspace="pack" hidden>
     <h2 data-i18n="step_preview_title">③ 貼圖池：預覽 + 去背</h2>
+    <div class="project-bar" id="project-bar">
+      <label class="project-bar-label">專案
+        <select id="project-select" title="切換專案（貼圖池會自動儲存成專案）"></select>
+      </label>
+      <input type="text" id="project-name" placeholder="專案名稱（自動儲存）" maxlength="40" />
+      <button type="button" class="ghost" id="project-new" title="開一個空的新專案">新增</button>
+      <button type="button" class="ghost" id="project-delete" title="刪除目前專案（不會刪素材庫的 grid）">刪除</button>
+    </div>
     <div class="pack-sources" id="pack-sources" hidden>
       <span class="pack-sources-label">從既有 grid 加格子：</span>
       <div class="pack-source-cards" id="pack-source-cards"></div>

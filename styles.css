@@ -1358,6 +1358,32 @@ body.has-pool #pack-empty { display: none; }
   body { padding-bottom: 4.2rem; }
 }
 
+.project-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.2rem 0 0.6rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--line-green-soft, #eafaf0);
+  border-radius: var(--radius-sm, 10px);
+}
+.project-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.project-bar select,
+.project-bar input {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.project-bar input { flex: 1; min-width: 140px; }
+
 .pack-sources {
   display: flex;
   align-items: center;
