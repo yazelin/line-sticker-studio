@@ -976,7 +976,10 @@ async function fetchGrid(apiUrl, body) {
 const gridFileInput = $("grid-file-input");
 const gridDropZone = $("grid-drop-zone");
 
-gridFileInput.addEventListener("change", (e) => handleGridUploads(e.target.files));
+gridFileInput.addEventListener("change", (e) => {
+  const files = Array.from(e.target.files || []);
+  queuePoolOp(() => handleGridUploads(files));
+});
 ["dragenter", "dragover"].forEach((ev) =>
   gridDropZone.addEventListener(ev, (e) => {
     e.preventDefault();
@@ -990,7 +993,8 @@ gridFileInput.addEventListener("change", (e) => handleGridUploads(e.target.files
   })
 );
 gridDropZone.addEventListener("drop", (e) => {
-  if (e.dataTransfer.files?.length) handleGridUploads(e.dataTransfer.files);
+  const files = Array.from(e.dataTransfer.files || []);
+  if (files.length) queuePoolOp(() => handleGridUploads(files));
 });
 
 // Entry for the BYOG input — 1 file keeps the classic replace flow;
@@ -1347,6 +1351,7 @@ function renderTileIntoCell(idx, tile) {
     });
     bar.appendChild(b);
   };
+  mkBtn("tile-zoom", "⤢", "放大檢視／單張去背", () => openTileDialog(idx));
   mkBtn("tile-move", "▲", "往前移（決定 ZIP 內 01…NN 順序）",
     () => moveTile(idx, -1), idx === 0);
   mkBtn("tile-move", "▼", "往後移",
@@ -1364,8 +1369,81 @@ function renderTileIntoCell(idx, tile) {
     overlay.textContent = "點我重抽";
     cell.appendChild(overlay);
     cell.onclick = () => promptRerollTile(idx);
+  } else {
+    // BYOG / history mode: the image itself zooms (no reroll overlay).
+    img.style.cursor = "zoom-in";
+    img.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openTileDialog(idx);
+    });
   }
 }
+
+// ------------------------------------------------------------------
+// Tile zoom dialog — per-sticker inspect + re-key/restore (issue #6)
+
+const tileDialog = $("tile-dialog");
+const tileDialogImg = $("tile-dialog-img");
+const tileDialogTitle = $("tile-dialog-title");
+const tileDialogStatus = $("tile-dialog-status");
+const tileKeySelect = $("tile-key-select");
+const tileTuneSelect = $("tile-tune-select");
+const tileCleanBtn = $("tile-clean-btn");
+const tileRestoreBtn = $("tile-restore-btn");
+let tileDialogIdx = -1;
+
+function openTileDialog(idx) {
+  const tile = state.tiles[idx];
+  if (!tile || !tileDialog) return;
+  tileDialogIdx = idx;
+  // Seed controls from this tile's own params, falling back to globals.
+  tileKeySelect.value = tile.cleanParams?.key || state.chromaKey;
+  tileTuneSelect.value = tile.cleanParams?.tune || bgTuneSelect?.value || "balanced";
+  refreshTileDialog();
+  tileDialog.showModal();
+}
+
+function refreshTileDialog() {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile) return;
+  tileDialogImg.src = tileDataUrl(tile);
+  tileDialogTitle.textContent = `第 ${String(tileDialogIdx + 1).padStart(2, "0")} 張`;
+  if (tile.cleanParams) {
+    const keyLabel = CHROMA_KEYS[tile.cleanParams.key]?.label || tile.cleanParams.key;
+    const tuneLabel = { safe: "保守", balanced: "標準", aggressive: "積極" }[tile.cleanParams.tune] || tile.cleanParams.tune;
+    tileDialogStatus.textContent = `狀態：已去背（${keyLabel}・${tuneLabel}）`;
+  } else {
+    tileDialogStatus.textContent = "狀態：原始切圖（未去背）";
+  }
+}
+
+tileCleanBtn?.addEventListener("click", async () => {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile || tile.busy) return;
+  tile.busy = true;
+  tileCleanBtn.disabled = true;
+  try {
+    await cleanTile(tile, {
+      key: tileKeySelect.value,
+      tune: tileTuneSelect.value,
+    });
+    renderPool();
+    refreshTileDialog();
+  } finally {
+    tile.busy = false;
+    tileCleanBtn.disabled = false;
+  }
+});
+
+tileRestoreBtn?.addEventListener("click", () => {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile) return;
+  restoreTile(tile);
+  renderPool();
+  refreshTileDialog();
+});
+
+$("tile-dialog-close")?.addEventListener("click", () => tileDialog.close());
 
 function toggleIncluded(idx) {
   const tile = state.tiles[idx];
@@ -1494,6 +1572,16 @@ async function appendFromHistory(id) {
   $("step-download").hidden = false;
   renderPool();
   showToast(`已加入 9 格（貼圖池共 ${state.tiles.length} 格）— 勾選要打包的張`);
+}
+
+// Pool-mutating async loads are serialized through this queue — without
+// it, clicking history「＋」while an upload is still splitting interleaves
+// two loaders and the pool ends up with duplicated / half-cleared tiles.
+let poolOpChain = Promise.resolve();
+function queuePoolOp(fn) {
+  const run = poolOpChain.then(fn, fn);
+  poolOpChain = run.catch(() => {});
+  return run;
 }
 
 // Guard before actions that REPLACE the pool (AI generate / single BYOG
@@ -2985,8 +3073,8 @@ function buildHistoryCard(e) {
       <button class="act-delete" title="刪除">🗑</button>
     </div>`;
   card.querySelector("img").src = URL.createObjectURL(e.thumbnailBlob);
-  card.querySelector(".act-load").onclick = () => loadFromHistory(e.id);
-  card.querySelector(".act-add").onclick = () => appendFromHistory(e.id);
+  card.querySelector(".act-load").onclick = () => queuePoolOp(() => loadFromHistory(e.id));
+  card.querySelector(".act-add").onclick = () => queuePoolOp(() => appendFromHistory(e.id));
   card.querySelector(".act-star").onclick = async () => {
     await idbUpdateGeneration(e.id, { starred: !e.starred });
     if (state.currentGridId === e.id) await renderCurrentGridUi();

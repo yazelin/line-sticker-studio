@@ -423,6 +423,35 @@
     <canvas id="camera-canvas" hidden></canvas>
   </dialog>
 
+  <dialog id="tile-dialog" class="tile-dialog">
+    <h3 id="tile-dialog-title">放大檢視</h3>
+    <div class="tile-dialog-stage">
+      <img id="tile-dialog-img" alt="貼圖放大預覽" />
+    </div>
+    <p class="hint mini" id="tile-dialog-status"></p>
+    <div class="tile-dialog-controls">
+      <label class="bg-tune">Key
+        <select id="tile-key-select" aria-label="這張的 Chroma Key 顏色">
+          <option value="green">綠幕</option>
+          <option value="magenta">洋紅幕</option>
+        </select>
+      </label>
+      <label class="bg-tune">強度
+        <select id="tile-tune-select" aria-label="這張的去背強度">
+          <option value="safe">保守</option>
+          <option value="balanced" selected>標準</option>
+          <option value="aggressive">積極</option>
+        </select>
+      </label>
+      <button type="button" class="primary" id="tile-clean-btn">重新去背（只這張）</button>
+      <button type="button" class="ghost" id="tile-restore-btn">還原原始切圖</button>
+    </div>
+    <p class="hint mini">單張重去背永遠從原始切圖重算，調幾次都不會疊加髒邊。棋盤格 = 透明區。</p>
+    <menu>
+      <button type="button" class="ghost" id="tile-dialog-close">關閉</button>
+    </menu>
+  </dialog>
+
   <section class="card" id="step-preview" hidden>
     <h2 data-i18n="step_preview_title">③ 預覽 + 去背</h2>
     <p class="hint">點任一張可以重抽（仍會耗 API 呼叫）。LINE 上架需要透明背景，按下面按鈕在你的瀏覽器內跑去背模型，圖片不會上傳到任何伺服器。</p>

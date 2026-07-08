@@ -15,6 +15,10 @@ export async function loadZip(buffer) {
 export const WORKER_ORIGIN = "https://line-sticker-gemini.yazelinj303.workers.dev";
 
 export async function stubExternal(page) {
+  // NOTE: Playwright matches routes in REVERSE registration order — the
+  // catch-all must be registered FIRST so specific stubs win.
+  await page.route(`${WORKER_ORIGIN}/**`, (r) =>
+    r.fulfill({ status: 500, json: { error: "unexpected worker call in test" } }));
   // Worker API endpoints the frontend fetches at boot.
   await page.route(`${WORKER_ORIGIN}/quota`, (r) =>
     r.fulfill({ json: { quota: { used: 0, limit: 5 } } }));
@@ -24,9 +28,6 @@ export async function stubExternal(page) {
     r.fulfill({ json: { campaigns: [] } }));
   await page.route(`${WORKER_ORIGIN}/phrases`, (r) =>
     r.fulfill({ json: { phrases: [{ id: 1, label: "測試短語" }] } }));
-  // Anything else that slips through to the worker fails loudly.
-  await page.route(`${WORKER_ORIGIN}/**`, (r) =>
-    r.fulfill({ status: 500, json: { error: "unexpected worker call in test" } }));
   // Turnstile + Google Fonts: dead-end them (page must still boot).
   await page.route("https://challenges.cloudflare.com/**", (r) => r.abort());
   await page.route("https://fonts.googleapis.com/**", (r) => r.abort());
