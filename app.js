@@ -3340,6 +3340,11 @@ function escapeHtmlSafe(s) {
 }
 async function saveCurrentGridToHistory(source, metadata) {
   if (!state.lastGridPng) return;
+  // Ask the browser to protect our storage from eviction — once.
+  if (!localStorage.getItem("lss-persist-asked")) {
+    localStorage.setItem("lss-persist-asked", "1");
+    navigator.storage?.persist?.().catch(() => {});
+  }
   const id = genHistoryId();
   const thumb = await generateThumbnail(state.lastGridPng);
   await idbSaveGeneration({
@@ -3367,6 +3372,26 @@ async function pruneHistory() {
     showToast(`📌 已自動清除最舊歷史 (達 ${HISTORY_NONSTARRED_CAP} 筆上限)`);
   }
 }
+let assetsFilter = "all";
+
+function assetsFilterMatch(e) {
+  if (assetsFilter === "ai") return e.source === "ai";
+  if (assetsFilter === "byog") return e.source === "byog";
+  if (assetsFilter === "starred") return Boolean(e.starred);
+  return true;
+}
+
+async function updateStorageUsage() {
+  const el = $("storage-usage");
+  if (!el || !navigator.storage?.estimate) return;
+  try {
+    const { usage } = await navigator.storage.estimate();
+    if (usage != null) {
+      el.textContent = `儲存空間已用約 ${(usage / (1024 * 1024)).toFixed(1)} MB（存在你的瀏覽器）`;
+    }
+  } catch { /* estimate unsupported — leave blank */ }
+}
+
 function renderPackSources(all) {
   const wrap = $("pack-sources");
   const cards = $("pack-source-cards");
@@ -3398,14 +3423,23 @@ async function renderHistoryUi() {
   all.sort((a, b) => b.timestamp - a.timestamp);
   renderPackSources(all);
   historyCards.innerHTML = "";
-  if (all.length === 0) { historySection.hidden = true; return; }
+  if (all.length === 0) { historySection.hidden = true; updateStorageUsage(); return; }
   historySection.hidden = false;
   const ns = all.filter((e) => !e.starred).length;
   const st = all.filter((e) => e.starred).length;
   historyCount.textContent =
     `(${ns}/${HISTORY_NONSTARRED_CAP}` + (st ? ` + ⭐ ${st}` : "") + ")";
   historyCount.classList.toggle("warn", ns >= HISTORY_NONSTARRED_CAP - 2);
-  for (const e of all) historyCards.appendChild(buildHistoryCard(e));
+  const shown = all.filter(assetsFilterMatch);
+  for (const e of shown) historyCards.appendChild(buildHistoryCard(e));
+  if (shown.length === 0) {
+    const p = document.createElement("p");
+    p.className = "hint mini";
+    p.id = "assets-filter-empty";
+    p.textContent = "這個篩選目前沒有項目。";
+    historyCards.appendChild(p);
+  }
+  updateStorageUsage();
 }
 function buildHistoryCard(e) {
   const card = document.createElement("div");
@@ -3556,6 +3590,16 @@ refreshSlotStatus();
 refreshTextLangAvailability();
 renderPackSizeChips();
 renderThemeChips();
+
+// --- Assets toolbar wiring (issue #26) ---
+document.querySelectorAll(".assets-filter").forEach((b) =>
+  b.addEventListener("click", () => {
+    assetsFilter = b.dataset.filter;
+    document.querySelectorAll(".assets-filter").forEach((x) =>
+      x.classList.toggle("selected", x === b));
+    renderHistoryUi();
+  }));
+$("assets-import-btn")?.addEventListener("click", () => gridFileInput.click());
 
 // --- Project bar wiring (issue #25) ---
 $("project-select")?.addEventListener("change", (e) => {

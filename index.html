@@ -200,6 +200,17 @@
   <section class="card" id="assets-panel" data-workspace="assets">
     <h2>📚 素材庫：grid 與歷史</h2>
 
+    <div class="assets-toolbar">
+      <div class="assets-filters" id="assets-filters">
+        <button type="button" class="assets-filter selected" data-filter="all">全部</button>
+        <button type="button" class="assets-filter" data-filter="ai">AI</button>
+        <button type="button" class="assets-filter" data-filter="byog">BYOG</button>
+        <button type="button" class="assets-filter" data-filter="starred">⭐ 收藏</button>
+      </div>
+      <button type="button" class="ghost" id="assets-import-btn">匯入 3×3 圖（可多選）</button>
+      <span class="hint mini" id="storage-usage"></span>
+    </div>
+
     <!-- Current grid preview area (hidden until something loaded) -->
     <div id="current-grid-area" hidden>
       <div class="current-grid-meta">

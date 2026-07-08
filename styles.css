@@ -1358,6 +1358,31 @@ body.has-pool #pack-empty { display: none; }
   body { padding-bottom: 4.2rem; }
 }
 
+.assets-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.2rem 0 0.7rem;
+}
+.assets-filters { display: flex; gap: 0.35rem; }
+.assets-filter {
+  padding: 0.3rem 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.assets-filter:hover { border-color: var(--line-green); }
+.assets-filter.selected {
+  background: var(--line-green);
+  border-color: var(--line-green);
+  color: #fff;
+}
+#storage-usage { margin-left: auto; }
+
 .project-bar {
   display: flex;
   align-items: center;
