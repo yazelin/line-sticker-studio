@@ -1578,6 +1578,7 @@ function openTileDialog(idx) {
   if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
   refreshTileDialog();
   syncTextPanelFromTile(tile);
+  syncAdvSliders(tile);
   tileDialog.showModal();
 }
 
@@ -1588,7 +1589,9 @@ function refreshTileDialog() {
   tileDialogTitle.textContent = `第 ${String(tileDialogIdx + 1).padStart(2, "0")} 張`;
   if (tile.cleanParams) {
     const keyLabel = CHROMA_KEYS[tile.cleanParams.key]?.label || tile.cleanParams.key;
-    const tuneLabel = { safe: "保守", balanced: "標準", aggressive: "積極" }[tile.cleanParams.tune] || tile.cleanParams.tune;
+    const t = tile.cleanParams.tune;
+    const tuneLabel = typeof t === "object" ? "自訂細調"
+      : ({ safe: "保守", balanced: "標準", aggressive: "積極" }[t] || t);
     tileDialogStatus.textContent = `狀態：已去背（${keyLabel}・${tuneLabel}）`;
   } else {
     tileDialogStatus.textContent = "狀態：原始切圖（未去背）";
@@ -1619,6 +1622,59 @@ tileRestoreBtn?.addEventListener("click", () => {
   restoreTile(tile);
   renderPool();
   refreshTileDialog();
+});
+
+// --- Advanced chroma fine-tuning (issue #7) ---
+const ADV_FIELDS = [
+  ["adv-hard", "hard"], ["adv-soft", "soft"], ["adv-minkey", "minKey"],
+  ["adv-dominance", "dominance"], ["adv-erode", "erode"],
+];
+
+function advProfileFromSliders() {
+  const p = {};
+  for (const [id, key] of ADV_FIELDS) p[key] = Number($(id).value);
+  p.maxOther = Math.round(110 + (p.dominance - 1.7) * -60); // follow dominance loosely
+  return p;
+}
+
+function syncAdvSliders(tile) {
+  const base = (tile.cleanParams && typeof tile.cleanParams.tune === "object")
+    ? tile.cleanParams.tune
+    : { ...resolveChromaTuneProfile(tileTuneSelect?.value || "balanced"), erode: 1 };
+  const set = (id, v) => { const el = $(id); if (el && v != null) el.value = v; };
+  set("adv-hard", base.hard);
+  set("adv-soft", base.soft);
+  set("adv-minkey", base.minKey);
+  set("adv-dominance", base.dominance);
+  set("adv-erode", base.erode ?? 1);
+}
+
+let _advTimer = null;
+function scheduleAdvApply() {
+  clearTimeout(_advTimer);
+  _advTimer = setTimeout(async () => {
+    const tile = state.tiles[tileDialogIdx];
+    if (!tile || tile.busy) return;
+    tile.busy = true;
+    try {
+      await cleanTile(tile, { key: tileKeySelect.value, tune: advProfileFromSliders() });
+      renderPool();
+      refreshTileDialog();
+    } finally {
+      tile.busy = false;
+    }
+  }, 250);
+}
+for (const [id] of ADV_FIELDS) {
+  $(id)?.addEventListener("input", scheduleAdvApply);
+}
+$("tile-adv-reset")?.addEventListener("click", () => {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile) return;
+  // Back to the preset profile of the current strength dropdown.
+  tile.cleanParams = null;
+  syncAdvSliders(tile);
+  scheduleAdvApply();
 });
 
 $("tile-dialog-close")?.addEventListener("click", () => tileDialog.close());
@@ -2489,6 +2545,8 @@ const CHROMA_TUNE_PROFILES = {
 };
 
 function resolveChromaTuneProfile(tune = "balanced") {
+  // Custom profile object (issue #7 sliders) passes straight through.
+  if (tune && typeof tune === "object") return tune;
   return CHROMA_TUNE_PROFILES[tune] || CHROMA_TUNE_PROFILES.balanced;
 }
 
@@ -2606,7 +2664,7 @@ async function chromaKeyColorOut(srcCanvas, w, h, orig, outlineStyle, tune = "ba
   // transparent neighbor gets killed too. Eliminates the 1-2 px green
   // halo that survives despill — the fringe pixels nearest the bg
   // always carry the most key-color contamination.
-  const ERODE_PASSES = 1;
+  const ERODE_PASSES = TUNE.erode ?? 1;
   let nEroded = 0;
   for (let pass = 0; pass < ERODE_PASSES; pass++) {
     // Snapshot alpha so a single pass doesn't cascade-erode

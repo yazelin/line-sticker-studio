@@ -468,6 +468,31 @@
     </div>
     <p class="hint mini">單張重去背永遠從原始切圖重算，調幾次都不會疊加髒邊。棋盤格 = 透明區。</p>
 
+    <details class="tile-text-panel" id="tile-advanced">
+      <summary><strong>🎛 去背進階細調（蓋過上面的強度檔位，只影響這張）</strong></summary>
+      <p class="hint mini">拉桿即時重算（永遠從原始切圖）。往左 = 去更兇、往右 = 更保守。調到滿意就好，參數會存進專案。</p>
+      <div class="text-row">
+        <label class="text-mini">全去門檻
+          <input type="range" id="adv-hard" min="0.10" max="0.45" step="0.01" value="0.25" />
+        </label>
+        <label class="text-mini">羽化起點
+          <input type="range" id="adv-soft" min="0.02" max="0.20" step="0.01" value="0.05" />
+        </label>
+        <label class="text-mini">最低亮度
+          <input type="range" id="adv-minkey" min="20" max="90" step="1" value="50" />
+        </label>
+      </div>
+      <div class="text-row">
+        <label class="text-mini">色彩優勢比
+          <input type="range" id="adv-dominance" min="1.2" max="2.2" step="0.05" value="1.7" />
+        </label>
+        <label class="text-mini">邊緣侵蝕
+          <input type="range" id="adv-erode" min="0" max="3" step="1" value="1" />
+        </label>
+        <button type="button" class="ghost" id="tile-adv-reset">回檔位預設</button>
+      </div>
+    </details>
+
     <details class="tile-text-panel" id="tile-text-panel">
       <summary><strong>✍ 文字圖層（建議搭配無字生圖）</strong></summary>
       <p class="hint mini">改字、換字型、搬位置都在你的瀏覽器完成 — 不重生圖、零 API 成本、任何語言。</p>
