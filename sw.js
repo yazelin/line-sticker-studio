@@ -1,13 +1,18 @@
 // Service worker — offline support for the BYOG processing pipeline.
 // Strategy (issue #3):
 //   - navigations:           network-first, fallback to cached index.html
-//   - same-origin assets:    cache-first (precached below)
+//   - same-origin assets:    network-first with cache refresh — online
+//                            users ALWAYS get the freshly deployed
+//                            app.js/styles.css (no stale-JS footgun when
+//                            a deploy forgets to bump VERSION); offline
+//                            falls back to the precache
 //   - worker config GETs:    stale-while-revalidate (phrases/campaigns/config)
 //   - worker dynamic calls:  network-only (/generate, /generate-themes,
 //                            /prompt, /quota) — offline they fail and the
 //                            page degrades gracefully
 //   - Google Fonts:          stale-while-revalidate (fallback = system font)
-// Bump VERSION on every deploy that changes precached files.
+// VERSION only matters when the precache FILE LIST changes (add/remove
+// files) — content updates flow through network-first automatically.
 const VERSION = "v1";
 const PRECACHE = `lss-precache-${VERSION}`;
 const RUNTIME = "lss-runtime";
@@ -78,11 +83,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Same-origin static assets: cache-first against the precache.
+  // Same-origin static assets: network-first, refresh the precache copy
+  // on success, fall back to cache when offline.
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(req, { ignoreSearch: true })
-        .then((cached) => cached || fetch(req)),
+      fetch(req)
+        .then((resp) => {
+          if (resp && resp.ok) {
+            const copy = resp.clone();
+            caches.open(PRECACHE).then((cache) => cache.put(req, copy));
+          }
+          return resp;
+        })
+        .catch(() =>
+          caches.match(req, { ignoreSearch: true })),
     );
     return;
   }
