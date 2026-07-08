@@ -986,12 +986,116 @@ gridDropZone.addEventListener("drop", (e) => {
   if (f) handleGridUpload(f);
 });
 
+// Sample the 4 corner patches of an uploaded grid and classify the
+// backdrop: "green" | "magenta" | "#rrggbb" (unknown solid-ish color).
+// BYOG uploads with a non-chroma background are the #1 cause of opaque
+// stickers → LINE rejection, so we warn (or auto-pick the right key)
+// at import time instead of letting the user find out after upload.
+function detectGridKeyColor(img) {
+  const P = 8; // patch size
+  const c = document.createElement("canvas");
+  c.width = P * 2;
+  c.height = P * 2;
+  const ctx = c.getContext("2d");
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  // 4 corners → 4 quadrants of a 16×16 canvas.
+  ctx.drawImage(img, 0, 0, P, P, 0, 0, P, P);
+  ctx.drawImage(img, w - P, 0, P, P, P, 0, P, P);
+  ctx.drawImage(img, 0, h - P, P, P, 0, P, P, P);
+  ctx.drawImage(img, w - P, h - P, P, P, P, P, P, P);
+  const d = ctx.getImageData(0, 0, P * 2, P * 2).data;
+  let r = 0, g = 0, b = 0;
+  const n = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) {
+    r += d[i]; g += d[i + 1]; b += d[i + 2];
+  }
+  r /= n; g /= n; b /= n;
+  const greenScore = (g - Math.max(r, b)) / 255;
+  const magentaScore = (Math.min(r, b) - g) / 255;
+  if (greenScore > 0.25) return "green";
+  if (magentaScore > 0.25) return "magenta";
+  const hex = "#" + [r, g, b]
+    .map((v) => Math.round(v).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+  return hex;
+}
+
+// Heuristic: did background removal actually bite on this sticker?
+// Two failure signatures (both = LINE's #1 rejection reason):
+//   a. zero transparent pixels anywhere (e.g. user restored the raw tile)
+//   b. the opaque region is a near-uniform-colored CARD — a white/solid
+//      backdrop that chroma-key couldn't touch. Detected by walking the
+//      opaque bbox perimeter: a card has ~every perimeter pixel opaque
+//      in one flat color; a properly keyed character only touches the
+//      bbox edge at a few extremes.
+// (A plain "fully opaque" check is not enough: splitGrid fills the
+// contain-fit padding bars with the key color, so even a white-bg grid
+// ends up with transparent bars after keying.)
+function tileBackgroundNotRemoved(canvas) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const d = canvas.getContext("2d").getImageData(0, 0, w, h).data;
+
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  let anyTransparent = false;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = d[(y * w + x) * 4 + 3];
+      if (a < 255) anyTransparent = true;
+      if (a > 32) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (!anyTransparent) return true;      // signature (a)
+  if (maxX < minX) return false;         // fully transparent tile — other checks handle
+
+  // Walk the bbox perimeter, collect opaque pixels + their colors.
+  const perim = [];
+  const pushIf = (x, y) => {
+    const i = (y * w + x) * 4;
+    if (d[i + 3] > 32) perim.push([d[i], d[i + 1], d[i + 2]]);
+  };
+  let perimTotal = 0;
+  for (let x = minX; x <= maxX; x++) { pushIf(x, minY); pushIf(x, maxY); perimTotal += 2; }
+  for (let y = minY + 1; y < maxY; y++) { pushIf(minX, y); pushIf(maxX, y); perimTotal += 2; }
+  if (perimTotal === 0) return false;
+  const opaqueFrac = perim.length / perimTotal;
+  if (opaqueFrac < 0.85) return false;
+
+  let mr = 0, mg = 0, mb = 0;
+  for (const [r, g, b] of perim) { mr += r; mg += g; mb += b; }
+  mr /= perim.length; mg /= perim.length; mb /= perim.length;
+  let dev = 0;
+  for (const [r, g, b] of perim) {
+    dev += Math.abs(r - mr) + Math.abs(g - mg) + Math.abs(b - mb);
+  }
+  dev /= perim.length * 3;
+  return dev < 18;                        // signature (b): uniform card
+}
+
 async function handleGridUpload(file) {
   if (!file || !file.type.startsWith("image/")) {
     alert("請傳圖片檔");
     return;
   }
   const img = await loadImage(URL.createObjectURL(file));
+  // Backdrop sanity check — auto-switch key color when the grid clearly
+  // uses the other chroma plate; warn when it's neither (white/photo bg).
+  const detected = detectGridKeyColor(img);
+  if (detected === "green" || detected === "magenta") {
+    if (detected !== state.chromaKey) {
+      setChromaKey(detected, { persist: false });
+      showToast(`偵測到${CHROMA_KEYS[detected].label}背景，已自動切換 key 色為 ${CHROMA_KEYS[detected].label}`);
+    }
+  } else {
+    showToast(`⚠ 來源背景色 ${detected} 看起來不是綠幕/洋紅幕 — 去背可能失敗，LINE 上架需要透明背景`);
+  }
   const ratio = img.naturalWidth / img.naturalHeight;
   if (ratio < 0.85 || ratio > 1.18) {
     if (
@@ -1912,15 +2016,42 @@ async function downloadZip() {
       // If still no transparency, fall through and download opaque (with no further confirm).
     }
   }
+  // Per-tile transparency audit — tile.transparent only records that the
+  // removal PASS ran, not that it actually bit. A white-bg BYOG grid runs
+  // the pass, keys 0 pixels, and every sticker stays fully opaque → LINE
+  // rejects the whole pack. Pixel-check each included tile and warn.
+  const opaqueNums = [];
+  includedTiles.forEach((tile, i) => {
+    if (tileBackgroundNotRemoved(tile.canvas)) opaqueNums.push(i + 1);
+  });
+  if (opaqueNums.length > 0) {
+    const ok = confirm(
+      `⚠ 第 ${opaqueNums.join("、")} 張完全沒有透明背景 — LINE 上架會被退件。\n\n` +
+      "常見原因：來源圖背景不是綠幕/洋紅幕，chroma-key 認不到。\n\n" +
+      "→ 確定：仍要下載\n" +
+      "→ 取消：回去檢查（試試換 key 色重新去背，或換來源圖）",
+    );
+    if (!ok) return;
+  }
+
   const zip = new JSZip();
 
   // Each sticker — 370 × 320, PNG. Numbered 01..08 in the order they
   // appear in the grid (skipping excluded ones, but renumbering tightly).
+  const oversizeNames = [];
   for (let i = 0; i < includedTiles.length; i++) {
     const tile = includedTiles[i];
     const blob = await canvasToBlob(tile.canvas, "image/png");
     const name = `${String(i + 1).padStart(2, "0")}.png`;
+    if (blob.size > 1024 * 1024) oversizeNames.push(name);
     zip.file(name, blob);
+  }
+  if (oversizeNames.length > 0) {
+    const ok = confirm(
+      `⚠ ${oversizeNames.join("、")} 超過 1MB（LINE 單張上限）。\n\n` +
+      "→ 確定：仍要下載\n→ 取消：中止",
+    );
+    if (!ok) return;
   }
 
   // Main + tab use the first INCLUDED tile (not necessarily tiles[0]).
