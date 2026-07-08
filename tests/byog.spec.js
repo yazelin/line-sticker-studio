@@ -85,12 +85,16 @@ test("ZIP download without prior removal auto-runs removal on confirm", async ({
   expect(Object.keys(zip.files)).toHaveLength(11);
 });
 
-test("history: uploaded grid lands in history and reloads", async ({ page }) => {
+test("history: uploaded grid lands in assets tab and reloads", async ({ page }) => {
   await ackRules(page);
   await uploadGrid(page, await makeGridBuffer(page, "green"));
+  // Upload auto-switches to the pack workspace.
+  await expect(page.locator("#stickers-grid .sticker-cell img")).toHaveCount(9);
+  await page.locator('.studio-tab[data-tab="assets"]').click();
   await expect(page.locator("#history-section")).toBeVisible();
   await expect(page.locator(".history-card")).toHaveCount(1);
-  // Load it back — tiles re-render.
+  // Load it back — returns to pack with tiles re-rendered.
   await page.locator(".history-card .act-load").first().click();
   await expect(page.locator("#stickers-grid .sticker-cell img")).toHaveCount(9);
+  await expect(page.locator("#step-preview")).toBeVisible();
 });

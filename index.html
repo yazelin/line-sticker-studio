@@ -141,7 +141,13 @@
 
   <p class="path-picker-hint">① 選一條輸入路徑（A 主流 / B 省 API），然後到 ② 設定樣式</p>
 
-  <section class="card" id="step-upload">
+  <nav class="studio-nav" id="studio-nav" aria-label="工作區切換">
+    <button type="button" class="studio-tab active" data-tab="create">企劃生圖</button>
+    <button type="button" class="studio-tab" data-tab="assets">素材庫</button>
+    <button type="button" class="studio-tab" data-tab="pack">組包出貨</button>
+  </nav>
+
+  <section class="card" id="step-upload" data-workspace="create">
     <h2 data-i18n="step_a_title">🅰 主路徑：上傳角色圖讓 AI 產（每天 5 次免費，免登入）</h2>
     <p class="hint">建議：主體清楚、單純背景的正方形圖。AI 會學起來、一次產 8 張同角色不同姿勢/表情的貼圖（LINE 規定的最小套組）。</p>
     <p class="hint coffee-hint">
@@ -171,8 +177,28 @@
     </div>
   </section>
 
-  <section class="card" id="step-byog">
-    <h2>🅱 當前 3×3 grid + 歷史</h2>
+  <section class="card" id="step-byog" data-workspace="create">
+    <h2>🅱 替代路徑：上傳你自己的 3×3 圖（省 API、可多選批次）</h2>
+    <p class="hint mini">已經自己用 Gemini / ChatGPT 跑出 3×3 圖了？直接傳這裡、零 API 成本。切好的格子會進「組包出貨」的貼圖池。</p>
+    <details>
+      <summary><strong>怎麼自己產？</strong></summary>
+      <ol>
+        <li>在下面「② 選樣式 + 短語」設定好你要的風格 / 活動</li>
+        <li>點「自訂 8 格 → 複製 prompt 到 Gemini」拿到完整 prompt</li>
+        <li>到 <a href="https://gemini.google.com" target="_blank" rel="noopener">gemini.google.com</a> 或 ChatGPT，<strong>先上傳你的參考圖</strong>，再貼 prompt<br><span class="hint mini">⚠ prompt 是「對這張圖做什麼」的指令，沒附圖就生不出你的角色</span></li>
+        <li>下載它出的 3×3 圖</li>
+        <li>回來這裡上傳（可一次選多張湊大套組）</li>
+      </ol>
+    </details>
+    <label class="upload-box compact" id="grid-drop-zone">
+      <input type="file" id="grid-file-input" accept="image/*" multiple hidden />
+      <svg class="upload-icon"><use href="#i-upload"/></svg>
+      <span data-i18n="grid_drop_zone_text">點擊或拖曳「3×3 圖」到這裡</span>
+    </label>
+  </section>
+
+  <section class="card" id="assets-panel" data-workspace="assets">
+    <h2>📚 素材庫：grid 與歷史</h2>
 
     <!-- Current grid preview area (hidden until something loaded) -->
     <div id="current-grid-area" hidden>
@@ -193,43 +219,20 @@
 
     <!-- Empty state -->
     <div id="current-grid-empty" class="hint">
-      👋 還沒有 grid。請到「🅰 主路徑」用 AI 產一張，或下面上傳一張你已經做好的 3×3 圖。
+      👋 素材庫還是空的。到「企劃生圖」用 AI 產一張，或上傳你已經做好的 3×3 圖。
     </div>
-
-    <!-- BYOG upload (always visible, smaller) -->
-    <details class="tip-box" id="byog-upload-box">
-      <summary><strong>📤 上傳你自己的 3×3 圖（省 API）</strong></summary>
-      <div class="tip-body">
-        <p class="hint mini">已經自己用 Gemini / ChatGPT 跑出 3×3 圖了？直接傳這裡、零 API 成本。</p>
-        <details>
-          <summary><strong>怎麼自己產？</strong></summary>
-          <ol>
-            <li>到下面「② 選樣式 + 短語」設定好你要的風格 / 活動</li>
-            <li>點「自訂 8 格 → 複製 prompt 到 Gemini」拿到完整 prompt</li>
-            <li>到 <a href="https://gemini.google.com" target="_blank" rel="noopener">gemini.google.com</a> 或 ChatGPT，<strong>先上傳你的參考圖</strong>，再貼 prompt<br><span class="hint mini">⚠ prompt 是「對這張圖做什麼」的指令，沒附圖就生不出你的角色</span></li>
-            <li>下載它出的 3×3 圖</li>
-            <li>回來這裡上傳</li>
-          </ol>
-        </details>
-        <label class="upload-box compact" id="grid-drop-zone">
-          <input type="file" id="grid-file-input" accept="image/*" multiple hidden />
-          <svg class="upload-icon"><use href="#i-upload"/></svg>
-          <span data-i18n="grid_drop_zone_text">點擊或拖曳「3×3 圖」到這裡</span>
-        </label>
-      </div>
-    </details>
 
     <!-- History carousel -->
     <div id="history-section" hidden>
       <div class="history-header">
         <h3>📜 歷史 <span id="history-count" class="muted">(0/30)</span></h3>
-        <span class="hint mini">點 ↻ 載入舊的 grid、🗑 刪除、⭐ 收藏（不會被自動清除）、📌 重命名。最多保留 30 筆未收藏。</span>
+        <span class="hint mini">↻ 載入（取代貼圖池）、＋ 加入貼圖池、⭐ 收藏、📌 重命名、🗑 刪除。最多保留 30 筆未收藏。</span>
       </div>
       <div class="history-cards" id="history-cards"></div>
     </div>
   </section>
 
-  <section class="card" id="step-config">
+  <section class="card" id="step-config" data-workspace="create">
     <h2 data-i18n="step_config_title">② 選樣式 + 短語（兩條路徑共用）</h2>
 
     <p class="hint">本工具固定產出 LINE 接受的最小套組「<strong>8 張</strong>」，1 次 AI 呼叫就完成（約 50 秒、~USD 0.04）。要更多張請複製 prompt 自己跑。</p>
@@ -463,8 +466,17 @@
     </menu>
   </dialog>
 
-  <section class="card" id="step-preview" hidden>
-    <h2 data-i18n="step_preview_title">③ 預覽 + 去背</h2>
+  <div class="card pack-empty" id="pack-empty" data-workspace="pack">
+    <h2>📦 組包出貨</h2>
+    <p class="hint">貼圖池還是空的。到「企劃生圖」產一張 3×3、上傳自己的圖，或從「素材庫」把既有 grid 加進來。</p>
+  </div>
+
+  <section class="card" id="step-preview" data-workspace="pack" hidden>
+    <h2 data-i18n="step_preview_title">③ 貼圖池：預覽 + 去背</h2>
+    <div class="pack-sources" id="pack-sources" hidden>
+      <span class="pack-sources-label">從既有 grid 加格子：</span>
+      <div class="pack-source-cards" id="pack-source-cards"></div>
+    </div>
     <p class="hint">點任一張可以重抽（仍會耗 API 呼叫）。LINE 上架需要透明背景，按下面按鈕在你的瀏覽器內跑去背模型，圖片不會上傳到任何伺服器。</p>
 
     <div class="preview-actions">
@@ -511,7 +523,7 @@
     <div class="stickers-grid" id="stickers-grid"></div>
   </section>
 
-  <section class="card" id="step-download" hidden>
+  <section class="card" id="step-download" data-workspace="pack" hidden>
     <h2 data-i18n="step_download_title">④ 下載 + 上架</h2>
 
     <button class="primary big" id="download-zip-btn">
@@ -604,6 +616,7 @@
   <p>
     Made with ❤ by <a href="https://github.com/yazelin" target="_blank" rel="noopener">yazelin</a>
     · <a href="https://github.com/yazelin/line-sticker-studio" target="_blank" rel="noopener">GitHub</a>
+    · <a href="https://www.facebook.com/yaze.lin.gm" target="_blank" rel="noopener">Facebook</a>
     · <a href="https://buymeacoffee.com/yazelin" target="_blank" rel="noopener">☕ Buy me a coffee</a>
   </p>
   <p class="footer-note">圖片只在你的瀏覽器與 Gemini 之間傳遞，作者伺服器不留存。</p>

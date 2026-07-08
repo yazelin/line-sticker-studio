@@ -22,8 +22,8 @@ test("16-pack: pool two grids via history ＋, export 16 stickers", async ({ pag
   await uploadGrid(page, await makeGridBuffer(page, "green"), "b.png");
   await expect(page.locator(".history-card")).toHaveCount(2);
 
-  // Append the OLDER grid (cards sort newest-first → nth(1)).
-  await page.locator(".history-card").nth(1).locator(".act-add").click();
+  // Append the OLDER grid from the pack source strip (newest-first → nth(1)).
+  await page.locator("#pack-source-cards .act-add").nth(1).click();
   await expect(page.locator("#stickers-grid .sticker-cell")).toHaveCount(18);
 
   // Target 16 → auto-top-up to 16 selected.
@@ -104,7 +104,7 @@ test("custom main/tab picks land in main.png / tab.png", async ({ page }) => {
 test("replace-guard: single upload onto a pooled set asks before clearing", async ({ page }) => {
   await uploadGrid(page, await makeGridBuffer(page, "green"), "a.png");
   await uploadGrid(page, await makeGridBuffer(page, "green"), "b.png");
-  await page.locator(".history-card").nth(1).locator(".act-add").click();
+  await page.locator("#pack-source-cards .act-add").nth(1).click();
   await expect(page.locator("#stickers-grid .sticker-cell")).toHaveCount(18);
 
   // Dismiss the guard → pool untouched.
