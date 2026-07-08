@@ -808,13 +808,10 @@ async function generateAll() {
     // Gemini gives 9 tiles. LINE only accepts 8 per pack, so we show all
     // 9 and pre-select the first 8 — user can swap which one to drop.
     for (let i = 0; i < GRID_SIZE; i++) {
-      const tile = {
-        canvas: tiles[i],
-        transparent: false,
+      const tile = makeTile(tiles[i], {
         phrase: result.phrases?.[i] || "",
-        busy: false,
         included: i < PACK_SIZE,
-      };
+      });
       state.tiles.push(tile);
       renderTileIntoCell(i, tile);
     }
@@ -1130,19 +1127,56 @@ async function handleGridUpload(file) {
 
   const tiles = await splitGrid(img);
   for (let i = 0; i < GRID_SIZE; i++) {
-    const tile = {
-      canvas: tiles[i],
-      transparent: false,
-      phrase: "",
-      busy: false,
-      included: i < PACK_SIZE,
-    };
+    const tile = makeTile(tiles[i], { included: i < PACK_SIZE });
     state.tiles.push(tile);
     renderTileIntoCell(i, tile);
   }
   refreshSelectionStatus();
   $("step-download").hidden = false;
   $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// ------------------------------------------------------------------
+// Tile model — every tile keeps its pristine split (`originalCanvas`);
+// cleaning ALWAYS recomputes from that original (never re-keys an
+// already-keyed result — despill would stack into dirty edges).
+
+function makeTile(canvas, { phrase = "", included = false } = {}) {
+  return {
+    canvas,                  // current pixels (may be cleaned)
+    originalCanvas: canvas,  // pristine split — the only cleanup input
+    transparent: false,
+    cleanParams: null,       // { key, tune } when cleaned
+    phrase,
+    busy: false,
+    included,
+    _url: null,              // cached toDataURL of `canvas`
+  };
+}
+
+function tileDataUrl(tile) {
+  if (!tile._url) tile._url = tile.canvas.toDataURL("image/png");
+  return tile._url;
+}
+
+async function cleanTile(tile, { key, tune } = {}) {
+  const useKey = normalizeChromaKey(key || state.chromaKey);
+  const useTune = tune || bgTuneSelect?.value || "balanced";
+  tile.canvas = await bgRemoveWithTextPreserve(tile.originalCanvas, useTune, useKey);
+  tile.transparent = true;
+  tile.cleanParams = { key: useKey, tune: useTune };
+  tile._url = null;
+}
+
+function restoreTile(tile) {
+  const c = document.createElement("canvas");
+  c.width = tile.originalCanvas.width;
+  c.height = tile.originalCanvas.height;
+  c.getContext("2d").drawImage(tile.originalCanvas, 0, 0);
+  tile.canvas = c;
+  tile.transparent = false;
+  tile.cleanParams = null;
+  tile._url = null;
 }
 
 // ------------------------------------------------------------------
@@ -1210,7 +1244,7 @@ function renderTileIntoCell(idx, tile) {
   cell.classList.toggle("excluded", !tile.included);
   cell.innerHTML = "";
   const img = document.createElement("img");
-  img.src = tile.canvas.toDataURL("image/png");
+  img.src = tileDataUrl(tile);
   img.alt = `sticker ${idx + 1}`;
   cell.appendChild(img);
 
@@ -1356,13 +1390,10 @@ async function rerollTile(idx, overridePhrase = null) {
     );
     const tiles = await splitGrid(gridImg);
     // The pinned phrase landed in slot 0 (top-left of the new grid).
-    state.tiles[idx] = {
-      canvas: tiles[0],
-      transparent: false,
+    state.tiles[idx] = makeTile(tiles[0], {
       phrase: effectivePhrase || result.phrases?.[0] || tile.phrase,
-      busy: false,
       included: tile.included,  // preserve selection
-    };
+    });
     // Re-rerolled tiles have white bg again — bgRemoved no longer guaranteed.
     if (state.bgRemoved) state.bgRemoved = false;
     renderTileIntoCell(idx, state.tiles[idx]);
@@ -1407,22 +1438,11 @@ async function removeAllBackgrounds() {
   try {
     for (let i = 0; i < state.tiles.length; i++) {
       const tile = state.tiles[i];
-      if (!tile.originalCanvas) {
-        const snap = document.createElement("canvas");
-        snap.width = tile.canvas.width;
-        snap.height = tile.canvas.height;
-        snap.getContext("2d").drawImage(tile.canvas, 0, 0);
-        tile.originalCanvas = snap;
-      }
       setBgProgress(
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
-      tile.canvas = await bgRemoveWithTextPreserve(
-        tile.originalCanvas,
-        bgTuneSelect?.value || "balanced",
-      );
-      tile.transparent = true;
+      await cleanTile(tile);
       renderTileIntoCell(i, tile);
     }
     state.bgRemoved = true;
@@ -1442,13 +1462,7 @@ async function restoreAllBackgrounds() {
   // fully undoes the bg removal — including outline / shadow / etc.
   for (let i = 0; i < state.tiles.length; i++) {
     const tile = state.tiles[i];
-    if (!tile.originalCanvas) continue;
-    const c = document.createElement("canvas");
-    c.width = tile.originalCanvas.width;
-    c.height = tile.originalCanvas.height;
-    c.getContext("2d").drawImage(tile.originalCanvas, 0, 0);
-    tile.canvas = c;
-    tile.transparent = false;
+    restoreTile(tile);
     renderTileIntoCell(i, tile);
   }
   state.bgRemoved = false;
@@ -1487,13 +1501,13 @@ function setBgProgress(pct, text) {
 // Always-run is safer: AI path sends a selected chroma key; BYOG without
 // that key color is a no-op since chroma key matches no pixels — the
 // image just stays unchanged.)
-async function bgRemoveWithTextPreserve(srcCanvas, tune = "balanced") {
+async function bgRemoveWithTextPreserve(srcCanvas, tune = "balanced", key = undefined) {
   const w = srcCanvas.width;
   const h = srcCanvas.height;
   const origCtx = srcCanvas.getContext("2d");
   const origData = origCtx.getImageData(0, 0, w, h);
   const orig = origData.data;
-  return chromaKeyColorOut(srcCanvas, w, h, orig, "none", tune, state.chromaKey);
+  return chromaKeyColorOut(srcCanvas, w, h, orig, "none", tune, key || state.chromaKey);
 }
 
 // Legacy ISNet path retained for reference; never called now.
@@ -2870,11 +2884,10 @@ async function loadFromHistory(id) {
   grid.innerHTML = "";
   for (let i = 0; i < GRID_SIZE; i++) grid.appendChild(buildPlaceholderCell(i));
   for (let i = 0; i < GRID_SIZE; i++) {
-    const tile = {
-      canvas: tiles[i], transparent: false,
+    const tile = makeTile(tiles[i], {
       phrase: e.metadata?.phrases?.[i] || "",
-      busy: false, included: i < PACK_SIZE,
-    };
+      included: i < PACK_SIZE,
+    });
     state.tiles.push(tile);
     renderTileIntoCell(i, tile);
   }
