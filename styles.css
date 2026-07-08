@@ -1525,6 +1525,71 @@ body.is-offline .theme-gen-row {
   margin: 0.6rem 0 0.2rem;
 }
 
+/* --- Text layer panel (issue #8) --- */
+
+.tile-text-panel {
+  margin: 0.55rem 0 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  background: #fbfbfb;
+}
+.tile-text-panel summary { cursor: pointer; }
+.tile-text-panel input[type="text"] {
+  width: 100%;
+  margin: 0.45rem 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+.text-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.35rem 0;
+}
+.text-row select {
+  flex: 1;
+  min-width: 150px;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.text-mini {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.text-mini input[type="range"] { width: 84px; }
+.file-btn { display: inline-flex; align-items: center; cursor: pointer; }
+.text-anchors {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin: 0.35rem 0;
+}
+.text-anchors button {
+  padding: 0.3rem 0.2rem;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.text-anchors button.selected {
+  background: var(--line-green);
+  border-color: var(--line-green);
+  color: #fff;
+}
+.warn-line { color: #c8843a; font-weight: 700; }
+#tile-dialog-img { touch-action: none; }
+#tile-dialog-img.dragging-text { cursor: grabbing; }
+
 /* --- Sticker pool: pack-size chips + per-tile toolbar (issues #4/#5) --- */
 
 .pack-size-row {

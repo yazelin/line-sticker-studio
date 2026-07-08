@@ -1272,8 +1272,126 @@ function makeTile(canvas, { phrase = "", included = false, srcGridId = null, src
 }
 
 function tileDataUrl(tile) {
-  if (!tile._url) tile._url = tile.canvas.toDataURL("image/png");
+  if (!tile._url) tile._url = composeTile(tile).toDataURL("image/png");
   return tile._url;
+}
+
+// ------------------------------------------------------------------
+// Text layer (issue #8) — text is a per-tile PARAMETER, composited at
+// preview/export time. Never baked into tile.canvas, so edits are free.
+
+const TEXT_DEFAULTS = {
+  text: "",
+  font: '"Noto Sans TC"',
+  sizePct: 18,           // % of tile width
+  color: "#1f2d24",
+  strokeColor: "#ffffff",
+  strokePct: 18,         // stroke width as % of font size
+  anchor: "hor_bottom",  // preset position; x/y (free drag) overrides
+  x: null,               // 0-100 (% of width) — free position
+  y: null,
+  layer: "above",        // "above" | "below" the character
+};
+
+function ensureTextParams(tile) {
+  if (!tile.textParams) tile.textParams = { ...TEXT_DEFAULTS };
+  return tile.textParams;
+}
+
+function textIsVertical(tp) {
+  return tp.anchor?.startsWith("ver") || tp.verticalFree === true;
+}
+
+// Compute the draw origin + alignment for a text params object.
+function textLayout(tp, w, h) {
+  const margin = Math.round(w * 0.06);
+  if (tp.x != null && tp.y != null) {
+    return { x: (tp.x / 100) * w, y: (tp.y / 100) * h, align: "center", baseline: "middle" };
+  }
+  switch (tp.anchor) {
+    case "hor_tl": return { x: margin, y: margin, align: "left", baseline: "top" };
+    case "hor_top": return { x: w / 2, y: margin, align: "center", baseline: "top" };
+    case "hor_tr": return { x: w - margin, y: margin, align: "right", baseline: "top" };
+    case "hor_bl": return { x: margin, y: h - margin, align: "left", baseline: "bottom" };
+    case "hor_br": return { x: w - margin, y: h - margin, align: "right", baseline: "bottom" };
+    case "ver_tl": return { x: margin + (w * tp.sizePct) / 200, y: margin, align: "center", baseline: "top" };
+    case "ver_tr": return { x: w - margin - (w * tp.sizePct) / 200, y: margin, align: "center", baseline: "top" };
+    case "hor_bottom":
+    default: return { x: w / 2, y: h - margin, align: "center", baseline: "bottom" };
+  }
+}
+
+function drawTileText(ctx, tp, w, h) {
+  const px = Math.max(8, (w * tp.sizePct) / 100);
+  ctx.save();
+  ctx.font = `900 ${px}px ${tp.font}, "Noto Sans TC", sans-serif`;
+  ctx.lineJoin = "round";
+  ctx.miterLimit = 2;
+  ctx.fillStyle = tp.color;
+  ctx.strokeStyle = tp.strokeColor;
+  ctx.lineWidth = (px * tp.strokePct) / 100;
+  const pos = textLayout(tp, w, h);
+  ctx.textAlign = pos.align;
+  ctx.textBaseline = pos.baseline;
+  const paint = (str, x, y) => {
+    if (ctx.lineWidth > 0.1) ctx.strokeText(str, x, y);
+    ctx.fillText(str, x, y);
+  };
+  if (textIsVertical(tp)) {
+    const chars = Array.from(tp.text);
+    // Vertical stack: fixed per-char line height; baseline handling top-down.
+    let y = pos.y;
+    if (pos.baseline === "bottom") y = pos.y - (chars.length - 1) * px * 1.08;
+    if (pos.baseline === "middle") y = pos.y - ((chars.length - 1) * px * 1.08) / 2;
+    ctx.textBaseline = pos.baseline === "bottom" ? "bottom" : (pos.baseline === "middle" ? "middle" : "top");
+    for (let i = 0; i < chars.length; i++) {
+      paint(chars[i], pos.x, y + i * px * 1.08);
+    }
+  } else {
+    paint(tp.text, pos.x, pos.y);
+  }
+  ctx.restore();
+}
+
+// Rough text bbox for the 10px LINE-margin hint (not for export gating).
+function textBounds(tp, w, h) {
+  const px = Math.max(8, (w * tp.sizePct) / 100);
+  const c = document.createElement("canvas");
+  const ctx = c.getContext("2d");
+  ctx.font = `900 ${px}px ${tp.font}, "Noto Sans TC", sans-serif`;
+  const pos = textLayout(tp, w, h);
+  let tw, th;
+  if (textIsVertical(tp)) {
+    tw = px * 1.1;
+    th = Array.from(tp.text).length * px * 1.08;
+  } else {
+    tw = ctx.measureText(tp.text).width;
+    th = px * 1.15;
+  }
+  const halfW = pos.align === "center" ? tw / 2 : tw;
+  let left = pos.align === "left" ? pos.x : pos.align === "right" ? pos.x - tw : pos.x - tw / 2;
+  let top = pos.baseline === "top" ? pos.y : pos.baseline === "bottom" ? pos.y - th : pos.y - th / 2;
+  const pad = (px * tp.strokePct) / 200;
+  return { left: left - pad, top: top - pad, right: left + tw + pad, bottom: top + th + pad };
+}
+
+function composeTile(tile) {
+  const tp = tile.textParams;
+  if (!tp || !tp.text) return tile.canvas;
+  const w = tile.canvas.width;
+  const h = tile.canvas.height;
+  const out = document.createElement("canvas");
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext("2d");
+  if (tp.layer === "below") {
+    drawTileText(ctx, tp, w, h);
+    ctx.drawImage(tile.canvas, 0, 0);
+  } else {
+    ctx.drawImage(tile.canvas, 0, 0);
+    drawTileText(ctx, tp, w, h);
+  }
+  return out;
 }
 
 async function cleanTile(tile, { key, tune } = {}) {
@@ -1459,6 +1577,7 @@ function openTileDialog(idx) {
   tileTuneSelect.value = tile.cleanParams?.tune || bgTuneSelect?.value || "balanced";
   if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
   refreshTileDialog();
+  syncTextPanelFromTile(tile);
   tileDialog.showModal();
 }
 
@@ -1503,6 +1622,185 @@ tileRestoreBtn?.addEventListener("click", () => {
 });
 
 $("tile-dialog-close")?.addEventListener("click", () => tileDialog.close());
+
+// --- Text layer controls (issue #8) ---
+const BUILTIN_FONTS = [
+  { label: "Noto Sans TC（預設）", family: '"Noto Sans TC"' },
+  { label: "M PLUS Rounded 1c（圓體）", family: '"M PLUS Rounded 1c"' },
+  { label: "系統黑體", family: "system-ui" },
+  { label: "系統明體", family: "serif" },
+  { label: "手寫感（系統）", family: "cursive" },
+];
+const uploadedFonts = new Map(); // family → true
+const localFontFamilies = [];
+
+function rebuildFontSelect(selected) {
+  const sel = $("text-font");
+  if (!sel) return;
+  sel.innerHTML = "";
+  const g1 = document.createElement("optgroup");
+  g1.label = "內建";
+  for (const f of BUILTIN_FONTS) g1.appendChild(new Option(f.label, f.family));
+  sel.appendChild(g1);
+  if (uploadedFonts.size > 0) {
+    const g2 = document.createElement("optgroup");
+    g2.label = "上傳字型";
+    for (const fam of uploadedFonts.keys()) g2.appendChild(new Option(fam.replace(/"/g, ""), fam));
+    sel.appendChild(g2);
+  }
+  if (localFontFamilies.length > 0) {
+    const g3 = document.createElement("optgroup");
+    g3.label = "本機字型";
+    for (const fam of localFontFamilies) g3.appendChild(new Option(fam, `"${fam}"`));
+    sel.appendChild(g3);
+  }
+  if (selected) sel.value = selected;
+  if (!sel.value) sel.value = BUILTIN_FONTS[0].family;
+}
+
+async function registerUploadedFont(name, blob) {
+  const family = `"${name}"`;
+  const face = new FontFace(name, await blob.arrayBuffer());
+  await face.load();
+  document.fonts.add(face);
+  uploadedFonts.set(family, true);
+  return family;
+}
+
+async function loadStoredFonts() {
+  try {
+    const all = await idbAllFrom("fonts");
+    for (const f of all) {
+      try { await registerUploadedFont(f.name, f.blob); } catch { /* corrupt font — skip */ }
+    }
+  } catch { /* store missing pre-upgrade */ }
+  rebuildFontSelect();
+}
+
+$("text-font-file")?.addEventListener("change", async (e) => {
+  const file = e.target.files?.[0];
+  const status = $("text-font-status");
+  if (!file) return;
+  const name = file.name.replace(/\.(ttf|otf|woff2?|TTF|OTF|WOFF2?)$/, "").replace(/["\\]/g, "").trim() || "uploaded-font";
+  try {
+    const family = await registerUploadedFont(name, file);
+    await idbPut("fonts", { id: name, name, blob: file });
+    rebuildFontSelect(family);
+    applyTextInput({ font: family });
+    if (status) { status.hidden = false; status.textContent = `✓ 已載入字型「${name}」（已存進瀏覽器，下次還在）`; }
+  } catch (err) {
+    if (status) { status.hidden = false; status.textContent = `字型載入失敗：${err.message || "檔案不是有效字型"}`; }
+  }
+  e.target.value = "";
+});
+
+$("text-local-fonts")?.addEventListener("click", async () => {
+  const status = $("text-font-status");
+  try {
+    const fonts = await window.queryLocalFonts();
+    const seen = new Set(localFontFamilies);
+    for (const f of fonts) {
+      if (!seen.has(f.family)) { seen.add(f.family); localFontFamilies.push(f.family); }
+    }
+    localFontFamilies.sort((a, b) => a.localeCompare(b));
+    rebuildFontSelect($("text-font").value);
+    if (status) { status.hidden = false; status.textContent = `✓ 已列出 ${localFontFamilies.length} 個本機字型（只在本機合成，不會上傳）`; }
+  } catch (err) {
+    if (status) { status.hidden = false; status.textContent = `讀取本機字型失敗：${err.message}`; }
+  }
+});
+
+// Apply a partial patch to the CURRENT dialog tile's text params, then
+// refresh that one cell + the dialog preview + autosave.
+function applyTextInput(patch) {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile) return;
+  const tp = ensureTextParams(tile);
+  Object.assign(tp, patch);
+  tile._url = null;
+  renderTileIntoCell(tileDialogIdx, tile);
+  refreshTileDialogPreviewOnly();
+  refreshTextMarginWarn(tile);
+  scheduleProjectSave();
+}
+
+function refreshTileDialogPreviewOnly() {
+  const tile = state.tiles[tileDialogIdx];
+  if (tile) tileDialogImg.src = tileDataUrl(tile);
+}
+
+function refreshTextMarginWarn(tile) {
+  const warn = $("text-margin-warn");
+  if (!warn) return;
+  const tp = tile.textParams;
+  if (!tp || !tp.text) { warn.hidden = true; return; }
+  const w = tile.canvas.width;
+  const h = tile.canvas.height;
+  const b = textBounds(tp, w, h);
+  warn.hidden = !(b.left < 10 || b.top < 10 || b.right > w - 10 || b.bottom > h - 10);
+}
+
+function syncTextPanelFromTile(tile) {
+  const tp = tile.textParams || TEXT_DEFAULTS;
+  $("text-content").value = tp.text || "";
+  rebuildFontSelect(tp.font);
+  $("text-size").value = tp.sizePct;
+  $("text-stroke").value = tp.strokePct;
+  $("text-color").value = tp.color;
+  $("text-stroke-color").value = tp.strokeColor;
+  $("text-layer-below").checked = tp.layer === "below";
+  document.querySelectorAll("#text-anchors button").forEach((b) =>
+    b.classList.toggle("selected", tp.x == null && b.dataset.anchor === tp.anchor));
+  $("text-local-fonts").hidden = !("queryLocalFonts" in window);
+  refreshTextMarginWarn(tile);
+}
+
+$("text-content")?.addEventListener("input", (e) => applyTextInput({ text: e.target.value }));
+$("text-font")?.addEventListener("change", (e) => applyTextInput({ font: e.target.value }));
+$("text-size")?.addEventListener("input", (e) => applyTextInput({ sizePct: Number(e.target.value) }));
+$("text-stroke")?.addEventListener("input", (e) => applyTextInput({ strokePct: Number(e.target.value) }));
+$("text-color")?.addEventListener("input", (e) => applyTextInput({ color: e.target.value }));
+$("text-stroke-color")?.addEventListener("input", (e) => applyTextInput({ strokeColor: e.target.value }));
+$("text-layer-below")?.addEventListener("change", (e) =>
+  applyTextInput({ layer: e.target.checked ? "below" : "above" }));
+document.querySelectorAll("#text-anchors button").forEach((b) =>
+  b.addEventListener("click", () => {
+    applyTextInput({ anchor: b.dataset.anchor, x: null, y: null });
+    document.querySelectorAll("#text-anchors button").forEach((x) =>
+      x.classList.toggle("selected", x === b));
+  }));
+
+// Free drag: pointer on the zoom image moves the text to any spot.
+(() => {
+  const img = tileDialogImg;
+  if (!img) return;
+  let dragging = false;
+  const toPct = (ev) => {
+    const r = img.getBoundingClientRect();
+    return {
+      x: Math.min(100, Math.max(0, ((ev.clientX - r.left) / r.width) * 100)),
+      y: Math.min(100, Math.max(0, ((ev.clientY - r.top) / r.height) * 100)),
+    };
+  };
+  img.addEventListener("pointerdown", (ev) => {
+    const tile = state.tiles[tileDialogIdx];
+    if (!tile?.textParams?.text) return;
+    dragging = true;
+    img.classList.add("dragging-text");
+    try { img.setPointerCapture(ev.pointerId); } catch { /* synthetic events */ }
+    const p = toPct(ev);
+    applyTextInput({ x: p.x, y: p.y });
+    document.querySelectorAll("#text-anchors button").forEach((x) => x.classList.remove("selected"));
+  });
+  img.addEventListener("pointermove", (ev) => {
+    if (!dragging) return;
+    const p = toPct(ev);
+    applyTextInput({ x: p.x, y: p.y });
+  });
+  const stop = () => { dragging = false; img.classList.remove("dragging-text"); };
+  img.addEventListener("pointerup", stop);
+  img.addEventListener("pointercancel", stop);
+})();
 $("tile-single-dl-btn")?.addEventListener("click", () => downloadSingleTile(tileDialogIdx));
 const tileShareBtn = $("tile-share-btn");
 tileShareBtn?.addEventListener("click", () => shareSingleTile(tileDialogIdx));
@@ -1850,7 +2148,7 @@ async function downloadOriginalGrid() {
 async function downloadSingleTile(idx) {
   const tile = state.tiles[idx];
   if (!tile) return;
-  const blob = await canvasToBlob(tile.canvas, "image/png");
+  const blob = await canvasToBlob(composeTile(tile), "image/png");
   triggerDownload(blob, `sticker-${String(idx + 1).padStart(2, "0")}.png`);
 }
 
@@ -1861,7 +2159,7 @@ async function downloadSingleTile(idx) {
 async function shareSingleTile(idx) {
   const tile = state.tiles[idx];
   if (!tile) return;
-  const blob = await canvasToBlob(tile.canvas, "image/png");
+  const blob = await canvasToBlob(composeTile(tile), "image/png");
   const file = new File([blob], `sticker-${String(idx + 1).padStart(2, "0")}.png`, {
     type: "image/png",
   });
@@ -2594,7 +2892,7 @@ async function downloadZip() {
   // rejects the whole pack. Pixel-check each included tile and warn.
   const opaqueNums = [];
   includedTiles.forEach((tile, i) => {
-    if (tileBackgroundNotRemoved(tile.canvas)) opaqueNums.push(i + 1);
+    if (tileBackgroundNotRemoved(composeTile(tile))) opaqueNums.push(i + 1);
   });
   if (opaqueNums.length > 0) {
     const ok = confirm(
@@ -2613,7 +2911,7 @@ async function downloadZip() {
   const oversizeNames = [];
   for (let i = 0; i < includedTiles.length; i++) {
     const tile = includedTiles[i];
-    const blob = await canvasToBlob(tile.canvas, "image/png");
+    const blob = await canvasToBlob(composeTile(tile), "image/png");
     const name = `${String(i + 1).padStart(2, "0")}.png`;
     if (blob.size > 1024 * 1024) oversizeNames.push(name);
     zip.file(name, blob);
@@ -2632,8 +2930,8 @@ async function downloadZip() {
     ? state.mainTile : includedTiles[0];
   const tabTile = (state.tabTile && includedTiles.includes(state.tabTile))
     ? state.tabTile : mainTile;
-  zip.file("main.png", await canvasToBlob(makeMainImage(mainTile.canvas), "image/png"));
-  zip.file("tab.png", await canvasToBlob(makeTabImage(tabTile.canvas), "image/png"));
+  zip.file("main.png", await canvasToBlob(makeMainImage(composeTile(mainTile)), "image/png"));
+  zip.file("tab.png", await canvasToBlob(makeTabImage(composeTile(tabTile)), "image/png"));
 
   zip.file("README.txt", buildReadmeText(currentCampaign(), includedTiles.length));
 
@@ -2670,7 +2968,7 @@ async function downloadStickersOnly() {
   const zip = new JSZip();
   for (let i = 0; i < state.tiles.length; i++) {
     const tile = state.tiles[i];
-    const blob = await canvasToBlob(tile.canvas, "image/png");
+    const blob = await canvasToBlob(composeTile(tile), "image/png");
     // Name with phrase if we have one — much easier to find later than 01.png.
     const phrase = (tile.phrase || "").replace(/[\\/:*?"<>|]/g, "").trim();
     const safePhrase = phrase ? `-${phrase}` : "";
@@ -3653,6 +3951,8 @@ renderCurrentGridUi();
 renderHistoryUi();
 // Restore the last active project (multi-project, issue #25).
 queuePoolOp(() => restoreLastProject());
+// Re-register uploaded fonts (issue #8).
+loadStoredFonts();
 
 // LINE rules acknowledgment — gate both upload boxes until user checks.
 const RULES_ACK_KEY = "line-sticker-rules-acked";

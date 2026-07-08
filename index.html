@@ -467,6 +467,50 @@
       <button type="button" class="ghost" id="tile-restore-btn">還原原始切圖</button>
     </div>
     <p class="hint mini">單張重去背永遠從原始切圖重算，調幾次都不會疊加髒邊。棋盤格 = 透明區。</p>
+
+    <details class="tile-text-panel" id="tile-text-panel">
+      <summary><strong>✍ 文字圖層（建議搭配無字生圖）</strong></summary>
+      <p class="hint mini">改字、換字型、搬位置都在你的瀏覽器完成 — 不重生圖、零 API 成本、任何語言。</p>
+      <input type="text" id="text-content" placeholder="這格要印的字（留空 = 不印字）" maxlength="20" />
+      <div class="text-row">
+        <select id="text-font" aria-label="字型"></select>
+        <button type="button" class="ghost" id="text-local-fonts" hidden>列出本機字型</button>
+        <label class="ghost file-btn">上傳字型檔
+          <input type="file" id="text-font-file" accept=".ttf,.otf,.woff,.woff2" hidden />
+        </label>
+      </div>
+      <p class="hint mini" id="text-font-status" hidden></p>
+      <div class="text-row">
+        <label class="text-mini">大小
+          <input type="range" id="text-size" min="8" max="40" value="18" />
+        </label>
+        <label class="text-mini">描邊
+          <input type="range" id="text-stroke" min="0" max="30" value="18" />
+        </label>
+        <label class="text-mini">字色
+          <input type="color" id="text-color" value="#1f2d24" />
+        </label>
+        <label class="text-mini">邊色
+          <input type="color" id="text-stroke-color" value="#ffffff" />
+        </label>
+      </div>
+      <div class="text-anchors" id="text-anchors">
+        <button type="button" data-anchor="hor_tl">左上</button>
+        <button type="button" data-anchor="hor_top">正上</button>
+        <button type="button" data-anchor="hor_tr">右上</button>
+        <button type="button" data-anchor="hor_bl">左下</button>
+        <button type="button" data-anchor="hor_bottom">正下</button>
+        <button type="button" data-anchor="hor_br">右下</button>
+        <button type="button" data-anchor="ver_tl">直書左上</button>
+        <button type="button" data-anchor="ver_tr">直書右上</button>
+      </div>
+      <div class="text-row">
+        <label class="text-mini"><input type="checkbox" id="text-layer-below" /> 文字放角色下層</label>
+        <span class="hint mini">想放特別的位置？直接在上面的放大圖上<strong>拖曳文字</strong>。</span>
+      </div>
+      <p class="hint mini warn-line" id="text-margin-warn" hidden>⚠ 文字可能超出 LINE 的 10px 安全留白，上架有風險。</p>
+      <p class="hint mini">字型授權提醒：上架／商用請確認你對所選字型有商用授權（本機字型不會上傳，只在你的電腦上合成）。</p>
+    </details>
     <menu>
       <button type="button" class="ghost" id="tile-dialog-close">關閉</button>
       <button type="button" class="ghost" id="tile-single-dl-btn">
