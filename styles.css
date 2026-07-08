@@ -1305,6 +1305,24 @@ button, .primary, .ghost {
 }
 .tile-download:hover { background: #fff; transform: scale(1.1); }
 
+/* --- Offline banner (issue #3) --- */
+
+.offline-banner {
+  margin: 0.6rem auto;
+  max-width: 860px;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-sm, 10px);
+  background: #fff4e0;
+  color: #8a5a1e;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+}
+body.is-offline #step-a,
+body.is-offline .theme-gen-row {
+  opacity: 0.55;
+}
+
 /* --- Theme quick-entry chips (issue #10) --- */
 
 .theme-chips {

@@ -15,25 +15,30 @@ export async function loadZip(buffer) {
 export const WORKER_ORIGIN = "https://line-sticker-gemini.yazelinj303.workers.dev";
 
 export async function stubExternal(page) {
+  // Route at the CONTEXT level: with PW_EXPERIMENTAL_SERVICE_WORKER_
+  // NETWORK_EVENTS, service-worker-initiated fetches surface on the
+  // context, not the page — page-level routes would let the SW hit the
+  // real worker. Context routes intercept both.
+  const ctx = typeof page.context === "function" ? page.context() : page;
   // NOTE: Playwright matches routes in REVERSE registration order — the
   // catch-all must be registered FIRST so specific stubs win.
-  await page.route(`${WORKER_ORIGIN}/**`, (r) =>
+  await ctx.route(`${WORKER_ORIGIN}/**`, (r) =>
     r.fulfill({ status: 500, json: { error: "unexpected worker call in test" } }));
   // Worker API endpoints the frontend fetches at boot.
-  await page.route(`${WORKER_ORIGIN}/quota`, (r) =>
+  await ctx.route(`${WORKER_ORIGIN}/quota`, (r) =>
     r.fulfill({ json: { quota: { used: 0, limit: 5 } } }));
-  await page.route(`${WORKER_ORIGIN}/config`, (r) =>
+  await ctx.route(`${WORKER_ORIGIN}/config`, (r) =>
     r.fulfill({ json: { turnstileSiteKey: null } }));
-  await page.route(`${WORKER_ORIGIN}/campaigns`, (r) =>
+  await ctx.route(`${WORKER_ORIGIN}/campaigns`, (r) =>
     r.fulfill({ json: { campaigns: [] } }));
-  await page.route(`${WORKER_ORIGIN}/phrases`, (r) =>
+  await ctx.route(`${WORKER_ORIGIN}/phrases`, (r) =>
     r.fulfill({ json: { phrases: [{ id: 1, label: "測試短語" }] } }));
   // Turnstile + Google Fonts: dead-end them (page must still boot).
-  await page.route("https://challenges.cloudflare.com/**", (r) => r.abort());
-  await page.route("https://fonts.googleapis.com/**", (r) => r.abort());
-  await page.route("https://fonts.gstatic.com/**", (r) => r.abort());
+  await ctx.route("https://challenges.cloudflare.com/**", (r) => r.abort());
+  await ctx.route("https://fonts.googleapis.com/**", (r) => r.abort());
+  await ctx.route("https://fonts.gstatic.com/**", (r) => r.abort());
   // JSZip CDN → serve the local copy (same 3.10.1).
-  await page.route("https://cdn.jsdelivr.net/npm/jszip@*/dist/jszip.min.js", (r) =>
+  await ctx.route("https://cdn.jsdelivr.net/npm/jszip@*/dist/jszip.min.js", (r) =>
     r.fulfill({ body: readFileSync(JSZIP_MIN, "utf8"), contentType: "application/javascript" }));
 }
 

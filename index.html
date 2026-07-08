@@ -119,6 +119,11 @@
 </header>
 
 <main>
+  <div class="offline-banner" id="offline-banner" hidden>
+    離線模式：AI 生成／主題產生器／複製 prompt 需要網路，已暫停。
+    匯入圖片、切圖、去背、組包下載、歷史庫都照常可用。
+  </div>
+
   <section class="rules-banner" id="rules-banner">
     <h3>⚠ 上傳前請確認 LINE Creators Market 規定</h3>
     <p class="hint">違反這些規則 = LINE 審核時 100% 退件，做白工。</p>
@@ -604,7 +609,7 @@
   <p class="footer-note">圖片只在你的瀏覽器與 Gemini 之間傳遞，作者伺服器不留存。</p>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
 <script type="module" src="app.js"></script>
 </body>

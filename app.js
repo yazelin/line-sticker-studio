@@ -3270,6 +3270,9 @@ renderThemeChips();
 // step-config is always visible now (so BYOG users can use settings dialog
 // to copy prompt for Gemini), so eager-load campaigns at boot.
 ensureCampaignsLoaded().then(renderCampaignPicker);
+// Eager-load the phrase pool too — costs one tiny GET, and the SW's
+// stale-while-revalidate cache then keeps the dropdown usable offline.
+ensurePoolLoaded();
 // Eager-load grid history (will show 🅱 carousel + last loaded grid).
 renderCurrentGridUi();
 renderHistoryUi();
@@ -3289,6 +3292,34 @@ function refreshRulesGate() {
 rulesAck.checked = localStorage.getItem(RULES_ACK_KEY) === "1";
 rulesAck.addEventListener("change", refreshRulesGate);
 refreshRulesGate();
+// --- PWA: service worker + offline degradation (issue #3) ---
+if ("serviceWorker" in navigator) {
+  // Relative path → correct scope under the GitHub Pages subpath.
+  navigator.serviceWorker.register("./sw.js").catch((err) => {
+    console.warn("SW register failed (site still works online):", err);
+  });
+}
+
+const offlineBanner = $("offline-banner");
+function refreshOnlineUi() {
+  const off = !navigator.onLine;
+  if (offlineBanner) offlineBanner.hidden = !off;
+  document.body.classList.toggle("is-offline", off);
+  // Network-dependent actions pause while offline. Everything local
+  // (import/split/clean/pack/history) stays untouched.
+  generateBtn.disabled = off;
+  if (themeGenBtn) themeGenBtn.disabled = off;
+  if (slotsCopyBtn) slotsCopyBtn.disabled = off;
+  if (off) {
+    generateBtn.title = "離線中 — AI 生成需要網路";
+  } else {
+    generateBtn.title = "";
+  }
+}
+window.addEventListener("online", refreshOnlineUi);
+window.addEventListener("offline", refreshOnlineUi);
+refreshOnlineUi();
+
 (async () => {
   // Hydrate quota counter + Turnstile site key in parallel. The
   // Turnstile widget needs the site key from /config — once we have
