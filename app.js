@@ -1399,6 +1399,7 @@ function openTileDialog(idx) {
   // Seed controls from this tile's own params, falling back to globals.
   tileKeySelect.value = tile.cleanParams?.key || state.chromaKey;
   tileTuneSelect.value = tile.cleanParams?.tune || bgTuneSelect?.value || "balanced";
+  if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
   refreshTileDialog();
   tileDialog.showModal();
 }
@@ -1444,6 +1445,9 @@ tileRestoreBtn?.addEventListener("click", () => {
 });
 
 $("tile-dialog-close")?.addEventListener("click", () => tileDialog.close());
+$("tile-single-dl-btn")?.addEventListener("click", () => downloadSingleTile(tileDialogIdx));
+const tileShareBtn = $("tile-share-btn");
+tileShareBtn?.addEventListener("click", () => shareSingleTile(tileDialogIdx));
 
 function toggleIncluded(idx) {
   const tile = state.tiles[idx];
@@ -1613,6 +1617,29 @@ async function downloadSingleTile(idx) {
   if (!tile) return;
   const blob = await canvasToBlob(tile.canvas, "image/png");
   triggerDownload(blob, `sticker-${String(idx + 1).padStart(2, "0")}.png`);
+}
+
+// Share ONE sticker through the OS share sheet (mobile: straight into
+// LINE / IG / anywhere). Falls back to a plain download when the Web
+// Share API is unavailable or rejects the payload. (issue #9 — 手機試玩
+// 者做 1 張就想傳給朋友，不必打包 ZIP)
+async function shareSingleTile(idx) {
+  const tile = state.tiles[idx];
+  if (!tile) return;
+  const blob = await canvasToBlob(tile.canvas, "image/png");
+  const file = new File([blob], `sticker-${String(idx + 1).padStart(2, "0")}.png`, {
+    type: "image/png",
+  });
+  if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return; // user closed the sheet
+      console.warn("share failed, falling back to download", err);
+    }
+  }
+  triggerDownload(blob, file.name);
 }
 
 // Quick popup: let user override the phrase before re-calling Gemini.
