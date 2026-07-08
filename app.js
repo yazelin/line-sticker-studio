@@ -770,6 +770,7 @@ async function generateAll() {
   for (let i = 0; i < GRID_SIZE; i++) {
     grid.appendChild(buildPlaceholderCell(i));
   }
+  switchTab("pack");
 
   const callStart = Date.now();
   const ticker = setInterval(() => {
@@ -833,7 +834,7 @@ async function generateAll() {
 
     setGenProgress(100, `完成！產出 ${GRID_SIZE} 張、預設前 ${PACK_SIZE} 張打包。可點 9 號那張的「✓」改成它而排除其他。`);
     $("step-download").hidden = false;
-    $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
+    switchTab("pack");
   } catch (err) {
     clearInterval(ticker);
     console.error(err, err.detail ? `detail=${err.detail}` : "");
@@ -886,6 +887,7 @@ function showByogHandoff(headline) {
   if (proceed) {
     openSettings();
   } else {
+    switchTab("create");
     $("step-byog").scrollIntoView({ behavior: "smooth", block: "start" });
     $("step-byog").classList.add("flash-highlight");
     setTimeout(() => $("step-byog").classList.remove("flash-highlight"), 2000);
@@ -1040,7 +1042,7 @@ async function handleGridUploads(fileList) {
   renderPool();
   gridFileInput.value = "";
   showToast(`已載入 ${files.length} 張 grid（${state.tiles.length} 格），套組張數自動設為 ${state.packSize}（可改）`);
-  $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
+  switchTab("pack");
 }
 
 // Sample the 4 corner patches of an uploaded grid and classify the
@@ -1195,7 +1197,7 @@ async function handleGridUpload(file) {
   }
   renderPool();
   $("step-download").hidden = false;
-  $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
+  switchTab("pack");
 }
 
 // ------------------------------------------------------------------
@@ -1544,6 +1546,7 @@ function renderPool() {
     renderTileIntoCell(i, tile);
   });
   refreshSelectionStatus();
+  refreshPoolPresence();
 }
 
 function moveTile(idx, delta) {
@@ -1579,6 +1582,35 @@ async function appendFromHistory(id) {
   $("step-download").hidden = false;
   renderPool();
   showToast(`已加入 9 格（貼圖池共 ${state.tiles.length} 格）— 勾選要打包的張`);
+  switchTab("pack");
+}
+
+// ------------------------------------------------------------------
+// Studio shell — three workspaces on one page (issue #24).
+// body[data-tab] + CSS decide visibility; hash makes tabs deep-linkable.
+
+const WORKSPACES = ["create", "assets", "pack"];
+
+function switchTab(tab, { push = true } = {}) {
+  if (!WORKSPACES.includes(tab)) tab = "create";
+  document.body.dataset.tab = tab;
+  document.querySelectorAll(".studio-tab").forEach((b) =>
+    b.classList.toggle("active", b.dataset.tab === tab));
+  if (push && location.hash !== `#${tab}`) {
+    // replaceState keeps back-button history sane (no tab-spam entries).
+    history.replaceState(null, "", `#${tab}`);
+  }
+  window.scrollTo({ top: 0 });
+}
+
+document.querySelectorAll(".studio-tab").forEach((b) =>
+  b.addEventListener("click", () => switchTab(b.dataset.tab)));
+window.addEventListener("hashchange", () =>
+  switchTab(location.hash.slice(1) || "create", { push: false }));
+switchTab(location.hash.slice(1) || "create", { push: false });
+
+function refreshPoolPresence() {
+  document.body.classList.toggle("has-pool", state.tiles.length > 0);
 }
 
 // Pool-mutating async loads are serialized through this queue — without
@@ -3114,9 +3146,36 @@ async function pruneHistory() {
     showToast(`📌 已自動清除最舊歷史 (達 ${HISTORY_NONSTARRED_CAP} 筆上限)`);
   }
 }
+function renderPackSources(all) {
+  const wrap = $("pack-sources");
+  const cards = $("pack-source-cards");
+  if (!wrap || !cards) return;
+  cards.innerHTML = "";
+  if (all.length === 0) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  for (const e of all.slice(0, 12)) {
+    const card = document.createElement("div");
+    card.className = "pack-source-card";
+    card.title = e.name || `${e.source === "ai" ? "AI" : "BYOG"} grid`;
+    const img = document.createElement("img");
+    img.alt = "";
+    img.src = URL.createObjectURL(e.thumbnailBlob);
+    card.appendChild(img);
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "act-add";
+    add.textContent = "＋";
+    add.title = "把這張 grid 的 9 格加入貼圖池";
+    add.addEventListener("click", () => queuePoolOp(() => appendFromHistory(e.id)));
+    card.appendChild(add);
+    cards.appendChild(card);
+  }
+}
+
 async function renderHistoryUi() {
   const all = await idbListGenerations();
   all.sort((a, b) => b.timestamp - a.timestamp);
+  renderPackSources(all);
   historyCards.innerHTML = "";
   if (all.length === 0) { historySection.hidden = true; return; }
   historySection.hidden = false;
@@ -3261,7 +3320,7 @@ async function loadFromHistory(id) {
   $("bg-restore-btn").hidden = true;
   await renderCurrentGridUi();
   await renderHistoryUi();
-  $("step-byog").scrollIntoView({ behavior: "smooth", block: "start" });
+  switchTab("pack");
 }
 
 refreshEstimate();
