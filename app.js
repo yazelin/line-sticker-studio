@@ -1188,26 +1188,14 @@ async function downloadOriginalGrid() {
     alert("沒有原始 grid PNG — 先生成一次。");
     return;
   }
-  const url = URL.createObjectURL(state.lastGridPng);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `gemini-grid-${Date.now()}.png`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  triggerDownload(state.lastGridPng, `gemini-grid-${Date.now()}.png`);
 }
 
 async function downloadSingleTile(idx) {
   const tile = state.tiles[idx];
   if (!tile) return;
   const blob = await canvasToBlob(tile.canvas, "image/png");
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `sticker-${String(idx + 1).padStart(2, "0")}.png`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  triggerDownload(blob, `sticker-${String(idx + 1).padStart(2, "0")}.png`);
 }
 
 // Quick popup: let user override the phrase before re-calling Gemini.
@@ -1943,16 +1931,7 @@ async function downloadZip() {
   zip.file("README.txt", buildReadmeText(currentCampaign()));
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(zipBlob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `line-stickers-${Date.now()}.zip`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    a.remove();
-  }, 100);
+  triggerDownload(zipBlob, `line-stickers-${Date.now()}.zip`);
 }
 
 // "Download all 9 transparent stickers" — for users who don't want to
@@ -1992,16 +1971,7 @@ async function downloadStickersOnly() {
     zip.file(name, blob);
   }
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(zipBlob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `transparent-stickers-${Date.now()}.zip`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-    a.remove();
-  }, 100);
+  triggerDownload(zipBlob, `transparent-stickers-${Date.now()}.zip`);
 }
 
 function makeMainImage(srcCanvas) {
@@ -2032,6 +2002,23 @@ function makeTabImage(srcCanvas) {
 
 function canvasToBlob(canvas, type) {
   return new Promise((res) => canvas.toBlob(res, type));
+}
+
+// iOS Safari doesn't reliably honor the `download` attribute on blob: URLs
+// (it just navigates/previews instead of saving) — WebKit bug 167341. A
+// data: URL is honored much more reliably, so read the blob through
+// FileReader first. Works the same on desktop, just one extra hop.
+function triggerDownload(blob, filename) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const a = document.createElement("a");
+    a.href = reader.result;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+  reader.readAsDataURL(blob);
 }
 
 function buildReadmeText(camp) {
@@ -2668,12 +2655,7 @@ function buildHistoryCard(e) {
     await renderHistoryUi();
   };
   card.querySelector(".act-download").onclick = () => {
-    const url = URL.createObjectURL(e.gridBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `grid-${e.name ? e.name.replace(/\W+/g, "_") : e.id}.png`;
-    document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+    triggerDownload(e.gridBlob, `grid-${e.name ? e.name.replace(/\W+/g, "_") : e.id}.png`);
   };
   card.querySelector(".act-delete").onclick = async () => {
     if (!confirm("刪除這張 grid?")) return;
@@ -2728,11 +2710,7 @@ currentGridStarBtn?.addEventListener("click", async () => {
 currentGridDownloadBtn?.addEventListener("click", async () => {
   if (!state.currentGridId) return;
   const e = await idbGetGeneration(state.currentGridId);
-  const url = URL.createObjectURL(e.gridBlob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `grid-${e.name || e.id}.png`;
-  document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+  triggerDownload(e.gridBlob, `grid-${e.name || e.id}.png`);
 });
 currentGridDeleteBtn?.addEventListener("click", async () => {
   if (!state.currentGridId) return;
