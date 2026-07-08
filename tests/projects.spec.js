@@ -83,6 +83,21 @@ test("deleting a referenced grid warns with project names", async ({ page }) => 
   await expect(page.locator(".history-card")).toHaveCount(1);
 });
 
+test("replace-load resets pack size to 8 (no stale 16 from prior project)", async ({ page }) => {
+  // Build a 16-target project from two grids.
+  await uploadGrid(page, await makeGridBuffer(page, "green"), "a.png");
+  await uploadGrid(page, await makeGridBuffer(page, "green"), "b.png");
+  await page.locator("#pack-source-cards .act-add").nth(1).click();
+  await page.locator('.pack-size-chip[data-size="16"]').click();
+  await expect(page.locator("#selection-status")).toContainText("16/16");
+  // Single upload = replace → fresh draft at packSize 8, downloadable.
+  page.on("dialog", (d) => d.accept());
+  await uploadGrid(page, await makeGridBuffer(page, "green"), "c.png");
+  await expect(page.locator("#stickers-grid .sticker-cell")).toHaveCount(9);
+  await expect(page.locator('.pack-size-chip[data-size="8"]')).toHaveClass(/selected/);
+  await expect(page.locator("#selection-status")).toContainText("8/8");
+});
+
 test("new-project button clears to an empty draft", async ({ page }) => {
   await uploadGrid(page, await makeGridBuffer(page, "green"));
   await page.waitForTimeout(1000);
