@@ -51,9 +51,12 @@ export async function makeGridBuffer(page, bg = "green", size = 1024) {
     const cell = size / 3;
     for (let r = 0; r < 3; r++) {
       for (let col = 0; col < 3; col++) {
+        const idx = r * 3 + col;
         const cx = col * cell + cell / 2;
         const cy = r * cell + cell / 2;
-        ctx.fillStyle = "#8B1A1A";
+        // Distinct per-tile blob color (never green/magenta-ish) so tests
+        // can identify which source tile ended up where (reorder/main/tab).
+        ctx.fillStyle = `rgb(${180 - idx * 12}, 26, ${30 + idx * 10})`;
         ctx.beginPath();
         ctx.arc(cx, cy, cell * 0.28, 0, Math.PI * 2);
         ctx.fill();
@@ -98,6 +101,39 @@ export async function transparentPixelCount(page, imgSelector) {
     for (let i = 3; i < d.length; i += 4) if (d[i] === 0) n++;
     return n;
   }, imgSelector);
+}
+
+// Expected average red channel of a keyed sticker built from fixture tile
+// `idx` — blob dominates the opaque area; small white rect pulls it up.
+export function fixtureTileAvgRed(idx) {
+  return 0.91 * (180 - idx * 12) + 23;
+}
+
+// Average RGB of opaque pixels in a PNG buffer (decoded in-page).
+export async function pngAvgOpaqueColor(page, buffer) {
+  const b64 = buffer.toString("base64");
+  return page.evaluate(async (b64) => {
+    const resp = await fetch(`data:image/png;base64,${b64}`);
+    const bmp = await createImageBitmap(await resp.blob());
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(bmp, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 128) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+    }
+    return n ? { r: r / n, g: g / n, b: b / n, n } : { r: 0, g: 0, b: 0, n: 0 };
+  }, b64);
+}
+
+// Upload several grid buffers at once through the BYOG input.
+export async function uploadGrids(page, buffers) {
+  await page.setInputFiles(
+    "#grid-file-input",
+    buffers.map((buffer, i) => ({ name: `grid-${i + 1}.png`, mimeType: "image/png", buffer })),
+  );
 }
 
 // Click a download trigger and return the downloaded file as a Buffer.

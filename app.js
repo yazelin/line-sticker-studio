@@ -214,11 +214,11 @@ const I18N = {
     "ko": "원본 그리드 다운로드",
   },
   download_zip_btn: {
-    "zh-TW": "下載這組 ZIP（8 張貼圖 + main + tab + 說明）",
-    "zh-CN": "下载这组 ZIP（8 张贴图 + main + tab + 说明）",
-    "en": "Download this set as ZIP (8 stickers + main + tab + README)",
-    "ja": "このセットを ZIP でダウンロード (8 スタンプ + main + tab + 説明)",
-    "ko": "이 세트 ZIP 다운로드 (8 스티커 + main + tab + README)",
+    "zh-TW": "下載 LINE 套組 ZIP（貼圖 + main + tab + 說明）",
+    "zh-CN": "下载 LINE 套组 ZIP（贴图 + main + tab + 说明）",
+    "en": "Download LINE pack ZIP (stickers + main + tab + README)",
+    "ja": "LINE セット ZIP をダウンロード (スタンプ + main + tab + 説明)",
+    "ko": "LINE 팩 ZIP 다운로드 (스티커 + main + tab + README)",
   },
   open_camera_btn: {
     "zh-TW": "📷 用相機現拍",
@@ -280,7 +280,12 @@ const ESTIMATED_GRID_SECONDS = 50; // per 3×3 grid
 // 8 is the minimum we ship. Gemini gives us a 3×3 grid (9 tiles), so
 // we show all 9 and let the user de-select 1 they like least before ZIP.
 const GRID_SIZE = 9;
+// PACK_SIZE is the GENERATION-side constant: one 3×3 grid carries 8
+// user-configurable phrase slots (9th tile = spare). The PACKAGING-side
+// pack size is variable — LINE static packs accept 8/16/24/32/40 —
+// tracked in state.packSize and fed by pooling multiple grids.
 const PACK_SIZE = 8;
+const PACK_SIZES = [8, 16, 24, 32, 40];
 
 // Per-slot config persisted in localStorage. length-8 array, each entry:
 //   null              → fully random (worker picks)
@@ -484,7 +489,10 @@ const state = {
   chromaKey: loadChromaKey(), // "green" | "magenta"
   campaign: null,        // null or campaign id
   slotConfig: loadSlotConfig(), // length-PACK_SIZE
-  tiles: [],             // [{ canvas, transparent: false, phrase, busy: false }]
+  tiles: [],             // sticker POOL — tiles from one or more grids (makeTile)
+  packSize: 8,           // target LINE pack size (8/16/24/32/40)
+  mainTile: null,        // tile ref chosen as main.png (null = first included)
+  tabTile: null,         // tile ref chosen as tab.png (null = follow main)
   bgRemoved: false,
   removeBackgroundFn: null, // lazy-loaded @imgly/background-removal
   lastGridPng: null,     // raw Gemini 3×3 grid PNG blob (for backup/re-split)
@@ -636,6 +644,8 @@ function resetAll() {
   state.sourceImage = null;
   state.sourceFile = null;
   state.tiles = [];
+  state.mainTile = null;
+  state.tabTile = null;
   state.bgRemoved = false;
   fileInput.value = "";
   sourcePreview.hidden = true;
@@ -732,7 +742,10 @@ async function generateAll() {
     showQuotaExceededModal();
     return;
   }
+  if (!confirmPoolReplace()) return;
   state.tiles = [];
+  state.mainTile = null;
+  state.tabTile = null;
   state.bgRemoved = false;
   $("bg-restore-btn").hidden = true;
 
@@ -808,14 +821,12 @@ async function generateAll() {
     // Gemini gives 9 tiles. LINE only accepts 8 per pack, so we show all
     // 9 and pre-select the first 8 — user can swap which one to drop.
     for (let i = 0; i < GRID_SIZE; i++) {
-      const tile = makeTile(tiles[i], {
+      state.tiles.push(makeTile(tiles[i], {
         phrase: result.phrases?.[i] || "",
         included: i < PACK_SIZE,
-      });
-      state.tiles.push(tile);
-      renderTileIntoCell(i, tile);
+      }));
     }
-    refreshSelectionStatus();
+    renderPool();
 
     setGenProgress(100, `完成！產出 ${GRID_SIZE} 張、預設前 ${PACK_SIZE} 張打包。可點 9 號那張的「✓」改成它而排除其他。`);
     $("step-download").hidden = false;
@@ -965,7 +976,7 @@ async function fetchGrid(apiUrl, body) {
 const gridFileInput = $("grid-file-input");
 const gridDropZone = $("grid-drop-zone");
 
-gridFileInput.addEventListener("change", (e) => handleGridUpload(e.target.files[0]));
+gridFileInput.addEventListener("change", (e) => handleGridUploads(e.target.files));
 ["dragenter", "dragover"].forEach((ev) =>
   gridDropZone.addEventListener(ev, (e) => {
     e.preventDefault();
@@ -979,9 +990,51 @@ gridFileInput.addEventListener("change", (e) => handleGridUpload(e.target.files[
   })
 );
 gridDropZone.addEventListener("drop", (e) => {
-  const f = e.dataTransfer.files?.[0];
-  if (f) handleGridUpload(f);
+  if (e.dataTransfer.files?.length) handleGridUploads(e.dataTransfer.files);
 });
+
+// Entry for the BYOG input — 1 file keeps the classic replace flow;
+// multiple files bulk-load into the pool and auto-pick the biggest
+// LINE pack size that fits (拍板: 批次匯入是池的第一級來源).
+async function handleGridUploads(fileList) {
+  const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
+  if (files.length === 0) {
+    alert("請傳圖片檔");
+    return;
+  }
+  if (files.length === 1) return handleGridUpload(files[0]);
+
+  if (!confirmPoolReplace()) { gridFileInput.value = ""; return; }
+  state.sourceFile = null;
+  state.tiles = [];
+  state.mainTile = null;
+  state.tabTile = null;
+  state.bgRemoved = false;
+  $("bg-restore-btn").hidden = true;
+  document.body.classList.add("byog-mode");
+
+  for (const file of files) {
+    const img = await loadImage(URL.createObjectURL(file));
+    state.lastGridPng = file;
+    await saveCurrentGridToHistory("byog", {
+      fileName: file.name,
+      aspectRatio: img.naturalWidth / img.naturalHeight,
+      chromaKey: state.chromaKey,
+    });
+    const tiles = await splitGrid(img);
+    for (const t of tiles) state.tiles.push(makeTile(t, { included: false }));
+  }
+  // Auto-fit pack size, pre-select from the front.
+  state.packSize = bestPackSizeFor(state.tiles.length);
+  state.tiles.forEach((t, i) => { t.included = i < state.packSize; });
+
+  $("step-preview").hidden = false;
+  $("step-download").hidden = false;
+  renderPool();
+  gridFileInput.value = "";
+  showToast(`已載入 ${files.length} 張 grid（${state.tiles.length} 格），套組張數自動設為 ${state.packSize}（可改）`);
+  $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 // Sample the 4 corner patches of an uploaded grid and classify the
 // backdrop: "green" | "magenta" | "#rrggbb" (unknown solid-ish color).
@@ -1105,9 +1158,13 @@ async function handleGridUpload(file) {
     }
   }
 
+  if (!confirmPoolReplace()) { gridFileInput.value = ""; return; }
+
   // BYOG mode: discard any AI-mode source so reroll is correctly disabled.
   state.sourceFile = null;
   state.tiles = [];
+  state.mainTile = null;
+  state.tabTile = null;
   state.bgRemoved = false;
   $("bg-restore-btn").hidden = true;
   document.body.classList.add("byog-mode");
@@ -1127,11 +1184,9 @@ async function handleGridUpload(file) {
 
   const tiles = await splitGrid(img);
   for (let i = 0; i < GRID_SIZE; i++) {
-    const tile = makeTile(tiles[i], { included: i < PACK_SIZE });
-    state.tiles.push(tile);
-    renderTileIntoCell(i, tile);
+    state.tiles.push(makeTile(tiles[i], { included: i < PACK_SIZE }));
   }
-  refreshSelectionStatus();
+  renderPool();
   $("step-download").hidden = false;
   $("step-preview").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -1242,6 +1297,9 @@ function renderTileIntoCell(idx, tile) {
   if (!cell) return;
   cell.classList.remove("placeholder");
   cell.classList.toggle("excluded", !tile.included);
+  cell.classList.toggle("is-main", state.mainTile === tile);
+  cell.classList.toggle("is-tab", state.tabTile === tile);
+  cell.dataset.num = String(idx + 1).padStart(2, "0");
   cell.innerHTML = "";
   const img = document.createElement("img");
   img.src = tileDataUrl(tile);
@@ -1273,6 +1331,32 @@ function renderTileIntoCell(idx, tile) {
   });
   cell.appendChild(dl);
 
+  // Pool toolbar (bottom edge): reorder + main/tab pickers.
+  const bar = document.createElement("div");
+  bar.className = "tile-toolbar";
+  const mkBtn = (cls, label, title, onClick, disabled = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls;
+    b.textContent = label;
+    b.title = title;
+    b.disabled = disabled;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    bar.appendChild(b);
+  };
+  mkBtn("tile-move", "▲", "往前移（決定 ZIP 內 01…NN 順序）",
+    () => moveTile(idx, -1), idx === 0);
+  mkBtn("tile-move", "▼", "往後移",
+    () => moveTile(idx, +1), idx === state.tiles.length - 1);
+  mkBtn("tile-pick" + (state.mainTile === tile ? " active" : ""), "主",
+    "設為主圖 main.png（商店門面 240×240）", () => setMainTile(tile));
+  mkBtn("tile-pick" + (state.tabTile === tile ? " active" : ""), "標",
+    "設為聊天室標籤 tab.png（96×74）", () => setTabTile(tile));
+  cell.appendChild(bar);
+
   // Re-roll only available when we have the original source image.
   if (state.sourceFile) {
     const overlay = document.createElement("div");
@@ -1286,13 +1370,12 @@ function renderTileIntoCell(idx, tile) {
 function toggleIncluded(idx) {
   const tile = state.tiles[idx];
   if (!tile) return;
-  // If user is trying to INCLUDE this one but we already have PACK_SIZE
-  // included, prompt to swap.
+  // If user is trying to INCLUDE this one but the pack is already full,
+  // prompt to swap (or bump the pack size).
   const currentlyIncluded = state.tiles.filter((t) => t.included).length;
-  if (!tile.included && currentlyIncluded >= PACK_SIZE) {
+  if (!tile.included && currentlyIncluded >= state.packSize) {
     alert(
-      `已經有 ${PACK_SIZE} 張被選了。請先取消另一張，再勾這張。\n\n` +
-      `(LINE 規定每包剛好 ${PACK_SIZE} 張)`,
+      `已經選滿 ${state.packSize} 張了。先取消另一張，或把上方「LINE 套組張數」調大（16/24/32/40）。`,
     );
     return;
   }
@@ -1304,17 +1387,125 @@ function toggleIncluded(idx) {
 function refreshSelectionStatus() {
   const sel = $("selection-status");
   if (!sel) return;
+  const n = state.packSize;
   const included = state.tiles.filter((t) => t.included).length;
-  if (included === PACK_SIZE) {
-    sel.textContent = `✅ 已選 ${PACK_SIZE}/${PACK_SIZE} 張，可以下載 ZIP`;
+  if (included === n) {
+    sel.textContent = `✅ 已選 ${n}/${n} 張，可以下載 ZIP`;
     sel.className = "selection-status ready";
-  } else if (included < PACK_SIZE) {
-    sel.textContent = `⚠ 還差 ${PACK_SIZE - included} 張才能打包（目前 ${included}/${PACK_SIZE}）`;
+  } else if (included < n) {
+    sel.textContent = `⚠ 還差 ${n - included} 張才能打包（目前 ${included}/${n}）` +
+      (state.tiles.length < n ? ` — 池裡只有 ${state.tiles.length} 格，從歷史按「＋」再加一張 grid` : "");
     sel.className = "selection-status short";
   } else {
-    sel.textContent = `❌ 多選了 ${included - PACK_SIZE} 張（最多 ${PACK_SIZE}）`;
+    sel.textContent = `❌ 多選了 ${included - n} 張（最多 ${n}）`;
     sel.className = "selection-status over";
   }
+  renderPackSizeChips();
+}
+
+// ------------------------------------------------------------------
+// Sticker pool — pack-size chips, append-from-history / multi-upload,
+// reorder, main/tab pickers. (issues #4 / #5)
+
+function renderPackSizeChips() {
+  const wrap = $("pack-size-chips");
+  if (!wrap) return;
+  if (wrap.childElementCount === 0) {
+    for (const n of PACK_SIZES) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pack-size-chip";
+      b.dataset.size = String(n);
+      b.textContent = String(n);
+      b.addEventListener("click", () => setPackSize(n));
+      wrap.appendChild(b);
+    }
+  }
+  wrap.querySelectorAll(".pack-size-chip").forEach((b) => {
+    b.classList.toggle("selected", Number(b.dataset.size) === state.packSize);
+  });
+}
+
+function setPackSize(n) {
+  if (!PACK_SIZES.includes(n)) return;
+  state.packSize = n;
+  // Auto-top-up: if fewer tiles are selected than the new target, fill
+  // from the front of the pool (user can still swap afterwards).
+  let included = state.tiles.filter((t) => t.included).length;
+  if (included < n) {
+    for (const t of state.tiles) {
+      if (included >= n) break;
+      if (!t.included) { t.included = true; included++; }
+    }
+    renderPool();
+  } else {
+    refreshSelectionStatus();
+  }
+}
+
+// Largest LINE pack size that fits `count` tiles (min 8).
+function bestPackSizeFor(count) {
+  let best = PACK_SIZES[0];
+  for (const n of PACK_SIZES) if (n <= count) best = n;
+  return best;
+}
+
+// Re-render the whole pool grid from state.tiles.
+function renderPool() {
+  const grid = $("stickers-grid");
+  grid.innerHTML = "";
+  state.tiles.forEach((tile, i) => {
+    grid.appendChild(buildPlaceholderCell(i));
+    renderTileIntoCell(i, tile);
+  });
+  refreshSelectionStatus();
+}
+
+function moveTile(idx, delta) {
+  const j = idx + delta;
+  if (j < 0 || j >= state.tiles.length) return;
+  const [t] = state.tiles.splice(idx, 1);
+  state.tiles.splice(j, 0, t);
+  renderPool();
+}
+
+function setMainTile(tile) {
+  state.mainTile = state.mainTile === tile ? null : tile;
+  renderPool();
+}
+function setTabTile(tile) {
+  state.tabTile = state.tabTile === tile ? null : tile;
+  renderPool();
+}
+
+// Append all 9 tiles of a history grid into the pool (does NOT clear).
+async function appendFromHistory(id) {
+  const e = await idbGetGeneration(id);
+  if (!e) return;
+  const img = await loadImage(URL.createObjectURL(e.gridBlob));
+  const tiles = await splitGrid(img);
+  for (let i = 0; i < tiles.length; i++) {
+    state.tiles.push(makeTile(tiles[i], {
+      phrase: e.metadata?.phrases?.[i] || "",
+      included: false,
+    }));
+  }
+  $("step-preview").hidden = false;
+  $("step-download").hidden = false;
+  renderPool();
+  showToast(`已加入 9 格（貼圖池共 ${state.tiles.length} 格）— 勾選要打包的張`);
+}
+
+// Guard before actions that REPLACE the pool (AI generate / single BYOG
+// upload / history load). Once the user has pooled >1 grid, nuking it by
+// accident hurts — confirm first.
+function confirmPoolReplace() {
+  if (state.tiles.length <= GRID_SIZE) return true;
+  return confirm(
+    `貼圖池目前有 ${state.tiles.length} 格（多張 grid 湊的）。繼續會清空重來。\n\n` +
+    "→ 確定：清空並載入新的\n" +
+    "→ 取消：保留現有池（想加格子請用歷史卡片上的「＋」）",
+  );
 }
 
 function showGridDownload() {
@@ -2004,9 +2195,10 @@ async function downloadZip() {
     return;
   }
   const includedTiles = state.tiles.filter((t) => t.included);
-  if (includedTiles.length !== PACK_SIZE) {
+  if (includedTiles.length !== state.packSize) {
     alert(
-      `LINE 規定每包剛好 ${PACK_SIZE} 張，目前選了 ${includedTiles.length} 張。請調整再下載。`,
+      `套組張數設為 ${state.packSize}，目前選了 ${includedTiles.length} 張。` +
+      `請補勾／取消到剛好 ${state.packSize} 張，或改選其他套組張數（8/16/24/32/40）。`,
     );
     return;
   }
@@ -2068,12 +2260,16 @@ async function downloadZip() {
     if (!ok) return;
   }
 
-  // Main + tab use the first INCLUDED tile (not necessarily tiles[0]).
-  const heroCanvas = includedTiles[0].canvas;
-  zip.file("main.png", await canvasToBlob(makeMainImage(heroCanvas), "image/png"));
-  zip.file("tab.png", await canvasToBlob(makeTabImage(heroCanvas), "image/png"));
+  // Main/tab: user-picked tiles win; fall back to the first INCLUDED
+  // tile (classic behavior). A picked tile that got excluded is ignored.
+  const mainTile = (state.mainTile && includedTiles.includes(state.mainTile))
+    ? state.mainTile : includedTiles[0];
+  const tabTile = (state.tabTile && includedTiles.includes(state.tabTile))
+    ? state.tabTile : mainTile;
+  zip.file("main.png", await canvasToBlob(makeMainImage(mainTile.canvas), "image/png"));
+  zip.file("tab.png", await canvasToBlob(makeTabImage(tabTile.canvas), "image/png"));
 
-  zip.file("README.txt", buildReadmeText(currentCampaign()));
+  zip.file("README.txt", buildReadmeText(currentCampaign(), includedTiles.length));
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
   triggerDownload(zipBlob, `line-stickers-${Date.now()}.zip`);
@@ -2166,7 +2362,7 @@ function triggerDownload(blob, filename) {
   reader.readAsDataURL(blob);
 }
 
-function buildReadmeText(camp) {
+function buildReadmeText(camp, count = 8) {
   const key = chromaKeyColor();
   const campSection = camp
     ? `
@@ -2198,7 +2394,9 @@ ZIP 內容
 --------
 - main.png   主要圖片，240 × 240（LINE Creators Market「主要圖片」欄）
 - tab.png    聊天室標籤圖，96 × 74（「聊天室標籤」欄）
-- 01.png ~   貼圖本體，370 × 320（依序對應「貼圖 1～N」）
+- 01.png ~ ${String(count).padStart(2, "0")}.png   貼圖本體，370 × 320，共 ${count} 張（依序對應「貼圖 1～${count}」）
+
+提醒：LINE 編輯器建立貼圖時「貼圖數量」要選 ${count}，和 ZIP 張數一致。
 
 是否透明背景
 ------------
@@ -2779,7 +2977,8 @@ function buildHistoryCard(e) {
     <div class="history-card-name" title="${escapeHtmlSafe(displayName)}">${escapeHtmlSafe(displayName)}</div>
     <div class="history-card-meta">${escapeHtmlSafe(String(styleLabel).slice(0,18))} · ${escapeHtmlSafe(relativeTime(e.timestamp))}</div>
     <div class="history-card-actions">
-      <button class="act-load" title="載入">↻</button>
+      <button class="act-load" title="載入（取代目前貼圖池）">↻</button>
+      <button class="act-add" title="加入貼圖池（湊 16/24/32/40 張大套組）">＋</button>
       <button class="act-star" title="${e.starred ? "取消收藏" : "收藏"}">${e.starred ? "⭐" : "☆"}</button>
       <button class="act-rename" title="重命名">📌</button>
       <button class="act-download" title="下載">⬇</button>
@@ -2787,6 +2986,7 @@ function buildHistoryCard(e) {
     </div>`;
   card.querySelector("img").src = URL.createObjectURL(e.thumbnailBlob);
   card.querySelector(".act-load").onclick = () => loadFromHistory(e.id);
+  card.querySelector(".act-add").onclick = () => appendFromHistory(e.id);
   card.querySelector(".act-star").onclick = async () => {
     await idbUpdateGeneration(e.id, { starred: !e.starred });
     if (state.currentGridId === e.id) await renderCurrentGridUi();
@@ -2869,9 +3069,12 @@ currentGridDeleteBtn?.addEventListener("click", async () => {
 async function loadFromHistory(id) {
   const e = await idbGetGeneration(id);
   if (!e) return;
+  if (!confirmPoolReplace()) return;
   state.currentGridId = id;
   state.lastGridPng = e.gridBlob;
   state.tiles = [];
+  state.mainTile = null;
+  state.tabTile = null;
   state.bgRemoved = false;
   if (e.metadata?.styleHint) state.styleHint = e.metadata.styleHint;
   if (e.metadata?.campaign !== undefined) state.campaign = e.metadata.campaign;
@@ -2884,14 +3087,12 @@ async function loadFromHistory(id) {
   grid.innerHTML = "";
   for (let i = 0; i < GRID_SIZE; i++) grid.appendChild(buildPlaceholderCell(i));
   for (let i = 0; i < GRID_SIZE; i++) {
-    const tile = makeTile(tiles[i], {
+    state.tiles.push(makeTile(tiles[i], {
       phrase: e.metadata?.phrases?.[i] || "",
       included: i < PACK_SIZE,
-    });
-    state.tiles.push(tile);
-    renderTileIntoCell(i, tile);
+    }));
   }
-  refreshSelectionStatus();
+  renderPool();
   $("step-download").hidden = false;
   $("bg-restore-btn").hidden = true;
   await renderCurrentGridUi();
@@ -2902,6 +3103,7 @@ async function loadFromHistory(id) {
 refreshEstimate();
 refreshSlotStatus();
 refreshTextLangAvailability();
+renderPackSizeChips();
 // step-config is always visible now (so BYOG users can use settings dialog
 // to copy prompt for Gemini), so eager-load campaigns at boot.
 ensureCampaignsLoaded().then(renderCampaignPicker);

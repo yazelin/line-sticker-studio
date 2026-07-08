@@ -207,7 +207,7 @@
           </ol>
         </details>
         <label class="upload-box compact" id="grid-drop-zone">
-          <input type="file" id="grid-file-input" accept="image/*" hidden />
+          <input type="file" id="grid-file-input" accept="image/*" multiple hidden />
           <svg class="upload-icon"><use href="#i-upload"/></svg>
           <span data-i18n="grid_drop_zone_text">點擊或拖曳「3×3 圖」到這裡</span>
         </label>
@@ -462,7 +462,11 @@
       <span id="bg-progress-text">載入去背模型…</span>
     </div>
 
-    <p class="hint">每張右上的 ✓ / ✗ 控制是否打包進 ZIP（LINE 規定剛好 8 張，所以 9 選 8）。右下小箭頭可單獨下載這張。</p>
+    <p class="hint">每張右上的 ✓ / ✗ 控制是否打包進 ZIP。想出 16/24/32/40 張的大套組：先選張數，再從下方「歷史」按「＋」把其他 grid 的格子加進貼圖池，或一次選多張 3×3 圖上傳。</p>
+    <div class="pack-size-row">
+      <span class="pack-size-label">LINE 套組張數</span>
+      <div class="pack-size-chips" id="pack-size-chips"></div>
+    </div>
     <div class="selection-status ready" id="selection-status">已選 8/8 張</div>
     <div class="stickers-grid" id="stickers-grid"></div>
   </section>
@@ -472,12 +476,12 @@
 
     <button class="primary big" id="download-zip-btn">
       <svg class="btn-icon"><use href="#i-zip"/></svg>
-      <span data-i18n="download_zip_btn">下載這組 ZIP（8 張貼圖 + main + tab + 說明）</span>
+      <span data-i18n="download_zip_btn">下載 LINE 套組 ZIP（貼圖 + main + tab + 說明）</span>
     </button>
 
-    <button class="ghost big" id="download-stickers-only-btn" title="9 張透明 PNG，沒有 LINE 規格的 main/tab/README — 拿去 Slack / Discord / Notion / 簡報、什麼都行">
+    <button class="ghost big" id="download-stickers-only-btn" title="貼圖池全部透明 PNG，沒有 LINE 規格的 main/tab/README — 拿去 Slack / Discord / Notion / 簡報、什麼都行">
       <svg class="btn-icon"><use href="#i-download"/></svg>
-      <span>下載 9 張透明 PNG（不上架，拿去任何地方用）</span>
+      <span>下載全部透明 PNG（不上架，拿去任何地方用）</span>
     </button>
     <p class="hint mini" style="margin-top:0.4rem">
       💡 不打算上架 LINE？這個按鈕一次給你 9 張獨立透明 PNG，貼到 Slack 表情、Discord emoji、Notion、PPT、Word、IG 限動，都行。檔名會帶上每張的短語，方便日後找。

@@ -1305,6 +1305,86 @@ button, .primary, .ghost {
 }
 .tile-download:hover { background: #fff; transform: scale(1.1); }
 
+/* --- Sticker pool: pack-size chips + per-tile toolbar (issues #4/#5) --- */
+
+.pack-size-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0.5rem;
+}
+.pack-size-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.pack-size-chips { display: flex; gap: 0.35rem; }
+.pack-size-chip {
+  min-width: 42px;
+  padding: 0.32rem 0.6rem;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.pack-size-chip:hover { border-color: var(--line-green); }
+.pack-size-chip.selected {
+  background: var(--line-green);
+  border-color: var(--line-green);
+  color: #fff;
+}
+
+.tile-toolbar {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  z-index: 3;
+  display: flex;
+  gap: 3px;
+}
+.tile-toolbar button {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+.tile-toolbar button:hover:not(:disabled) { background: #fff; transform: scale(1.08); }
+.tile-toolbar button:disabled { opacity: 0.35; cursor: default; }
+.tile-toolbar .tile-pick.active {
+  background: var(--line-green);
+  color: #fff;
+}
+.sticker-cell.is-main::before,
+.sticker-cell.is-tab::before {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 3;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--line-green);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+.sticker-cell.is-main::before { content: "主圖"; }
+.sticker-cell.is-tab::before { content: "標籤"; }
+.sticker-cell.is-main.is-tab::before { content: "主圖+標籤"; }
+
 .selection-status {
   margin: 0.25rem 0 0.85rem;
   padding: 0.55rem 0.85rem;
