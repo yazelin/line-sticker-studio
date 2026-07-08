@@ -1525,6 +1525,25 @@ body.is-offline .theme-gen-row {
   margin: 0.6rem 0 0.2rem;
 }
 
+/* --- Library (issue #27) --- */
+
+.prompt-history-list { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+.prompt-history-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.82rem;
+}
+.prompt-history-item .meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-history-item button { flex: 0 0 auto; }
+.phrase-set-row { display: flex; gap: 0.5rem; align-items: center; margin: 0.5rem 0 0.2rem; flex-wrap: wrap; }
+.phrase-set-row select { padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 8px; }
+#style-save-btn { margin-top: 0.35rem; align-self: flex-start; }
+
 /* --- Text layer panel (issue #8) --- */
 
 .tile-text-panel {

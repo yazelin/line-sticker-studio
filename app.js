@@ -764,6 +764,8 @@ function syncConfigFromControls() {
       return "請填入至少 2 個字的風格描述（例：「梵谷風」「cyberpunk」）";
     }
     state.styleHint = customStyle;
+  } else if (styleHintSel.value.startsWith("saved:")) {
+    state.styleHint = styleHintSel.value.slice(6);
   } else {
     state.styleHint = styleHintSel.value;
   }
@@ -3628,6 +3630,9 @@ async function copyPromptToGemini() {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const { prompt } = await resp.json();
+    // Record FIRST (offline-reusable), then copy — clipboard can fail on
+    // some browsers without killing the record.
+    savePromptRecord(prompt).catch(() => {});
     await navigator.clipboard.writeText(prompt);
     slotsCopyStatus.textContent =
       "✓ 已複製！到 Gemini／ChatGPT 時：先上傳你的參考圖，再貼這段 prompt（沒附圖 prompt 不會套用到你的角色）。";
@@ -3637,6 +3642,138 @@ async function copyPromptToGemini() {
   }
   setTimeout(() => { slotsCopyStatus.hidden = true; }, 8000);
 }
+
+// ------------------------------------------------------------------
+// Library — prompt records / phrase sets / saved styles (issue #27)
+
+const PROMPT_CAP = 50;
+
+async function savePromptRecord(prompt) {
+  const rec = {
+    id: `pr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    ts: Date.now(),
+    prompt,
+    meta: {
+      styleHint: state.styleHint,
+      withText: state.withText,
+      chromaKey: state.chromaKey,
+      campaign: state.campaign,
+      lang: state.textLang,
+    },
+  };
+  await idbPut("prompts", rec);
+  const all = (await idbAllFrom("prompts")).sort((a, b) => b.ts - a.ts);
+  for (const old of all.slice(PROMPT_CAP)) await idbDelFrom("prompts", old.id);
+  renderPromptHistory();
+}
+
+async function renderPromptHistory() {
+  const list = $("prompt-history-list");
+  if (!list) return;
+  const all = (await idbAllFrom("prompts")).sort((a, b) => b.ts - a.ts).slice(0, 10);
+  list.innerHTML = "";
+  if (all.length === 0) {
+    list.innerHTML = '<p class="hint mini">還沒有紀錄 — 在「自訂 8 格」按過「複製 prompt」就會存到這裡。</p>';
+    return;
+  }
+  for (const r of all) {
+    const row = document.createElement("div");
+    row.className = "prompt-history-item";
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.title = r.prompt;
+    meta.textContent = `${relativeTime(r.ts)}・${r.meta?.styleHint || ""}・${r.prompt.slice(0, 42)}…`;
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "ghost";
+    copyBtn.textContent = "複製";
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(r.prompt);
+        showToast("✓ prompt 已複製（記得先在 Gemini 附上參考圖）");
+      } catch {
+        window.prompt("手動複製：", r.prompt);
+      }
+    });
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "ghost";
+    delBtn.textContent = "🗑";
+    delBtn.addEventListener("click", async () => {
+      await idbDelFrom("prompts", r.id);
+      renderPromptHistory();
+    });
+    row.appendChild(meta);
+    row.appendChild(copyBtn);
+    row.appendChild(delBtn);
+    list.appendChild(row);
+  }
+}
+
+// Phrase sets — save/load the 8-slot config by name.
+async function renderPhraseSetSelect() {
+  const sel = $("phrase-set-select");
+  if (!sel) return;
+  const all = (await idbAllFrom("phraseSets")).sort((a, b) => b.ts - a.ts);
+  sel.innerHTML = "";
+  sel.appendChild(new Option("📁 載入短語組…", ""));
+  for (const p of all) sel.appendChild(new Option(p.name, p.id));
+}
+
+$("phrase-set-save")?.addEventListener("click", async () => {
+  const cfg = readSlotConfigFromGrid();
+  if (cfg.every((s) => s === null)) { alert("目前 8 格全是隨機，沒東西可存。先填幾格再存。"); return; }
+  const name = window.prompt("短語組名稱：", "");
+  if (!name || !name.trim()) return;
+  await idbPut("phraseSets", {
+    id: `ps_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: name.trim().slice(0, 30),
+    cfg,
+    ts: Date.now(),
+  });
+  await renderPhraseSetSelect();
+  showToast(`✓ 已存短語組「${name.trim()}」`);
+});
+
+$("phrase-set-select")?.addEventListener("change", async (e) => {
+  const id = e.target.value;
+  if (!id) return;
+  const set = await idbGetFrom("phraseSets", id);
+  if (set) {
+    renderSlotGrid(set.cfg);
+    showToast(`✓ 已載入短語組「${set.name}」— 記得按「儲存」套用`);
+  }
+  e.target.value = "";
+});
+
+// Saved styles — favorite custom style strings into the style dropdown.
+async function renderSavedStyles() {
+  if (!styleHintSel) return;
+  const current = styleHintSel.value;
+  styleHintSel.querySelector('optgroup[label="我的風格"]')?.remove();
+  const all = (await idbAllFrom("styles")).sort((a, b) => b.ts - a.ts);
+  if (all.length === 0) return;
+  const group = document.createElement("optgroup");
+  group.label = "我的風格";
+  for (const st of all) group.appendChild(new Option(`⭐ ${st.name.slice(0, 40)}`, `saved:${st.name}`));
+  // Keep「自訂…」last: insert the group before the custom option's position.
+  styleHintSel.appendChild(group);
+  styleHintSel.value = current;
+}
+
+$("style-save-btn")?.addEventListener("click", async () => {
+  const text = $("style-custom-input")?.value.trim();
+  if (!text || text.length < 2) { alert("先在上面輸入至少 2 個字的風格描述再收藏。"); return; }
+  await idbPut("styles", {
+    id: `st_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: text,
+    ts: Date.now(),
+  });
+  await renderSavedStyles();
+  styleHintSel.value = `saved:${text}`;
+  $("style-custom-wrap").hidden = true;
+  showToast("✓ 已收藏到「我的風格」");
+});
 
 // ------------------------------------------------------------------
 // Quota UI wiring (no login — just a counter chip)
@@ -4011,6 +4148,10 @@ renderHistoryUi();
 queuePoolOp(() => restoreLastProject());
 // Re-register uploaded fonts (issue #8).
 loadStoredFonts();
+// Library boot renders (issue #27).
+renderPromptHistory();
+renderPhraseSetSelect();
+renderSavedStyles();
 
 // LINE rules acknowledgment — gate both upload boxes until user checks.
 const RULES_ACK_KEY = "line-sticker-rules-acked";

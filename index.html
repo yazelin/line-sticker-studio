@@ -342,6 +342,7 @@
       <label class="field" id="style-custom-wrap" hidden>
         自訂風格（中英文都可以、英文通常較準）
         <input type="text" id="style-custom-input" placeholder="例：90s anime + neon pastel + halftone dots / 浮世繪混 cyberpunk 螢光色 / 韓系 webtoon 加 glitter sparkle" maxlength="200" />
+        <button type="button" class="ghost" id="style-save-btn" title="收藏到「我的風格」，下次直接從下拉選">☆ 收藏這個風格</button>
       </label>
 
       <label class="field">
@@ -415,6 +416,12 @@
       <p class="hint" id="theme-gen-status" hidden></p>
       <div class="slot-grid" id="slot-grid"></div>
       <p class="hint" id="slots-copy-status" hidden></p>
+      <div class="phrase-set-row">
+        <select id="phrase-set-select" title="載入存過的短語組">
+          <option value="">📁 載入短語組…</option>
+        </select>
+        <button type="button" class="ghost" id="phrase-set-save">存成短語組</button>
+      </div>
       <menu>
         <button value="cancel" class="ghost">取消</button>
         <button type="button" class="ghost" id="slots-reset">全部重設</button>
@@ -545,6 +552,14 @@
       <button type="button" class="primary" id="tile-share-btn" hidden>分享這張</button>
     </menu>
   </dialog>
+
+  <section class="card" id="library-panel" data-workspace="create">
+    <h2>🗂 我的 Library</h2>
+    <details id="prompt-history-box">
+      <summary><strong>📝 Prompt 紀錄</strong>（複製過的 prompt 都在這，離線也能重複製）</summary>
+      <div id="prompt-history-list" class="prompt-history-list"></div>
+    </details>
+  </section>
 
   <div class="card pack-empty" id="pack-empty" data-workspace="pack">
     <h2>📦 組包出貨</h2>
