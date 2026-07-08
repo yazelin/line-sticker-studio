@@ -1,0 +1,14 @@
+{
+  "name": "line-sticker-studio",
+  "private": true,
+  "type": "module",
+  "description": "Static frontend tests for LINE Sticker Studio",
+  "scripts": {
+    "test": "playwright test",
+    "serve": "python3 -m http.server 8917"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "jszip": "3.10.1"
+  }
+}
