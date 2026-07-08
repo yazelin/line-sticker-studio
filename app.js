@@ -465,9 +465,11 @@ async function ensurePoolLoaded() {
     poolCache.items = Array.isArray(data.phrases) ? data.phrases : [];
     poolCache.loaded = true;
   } catch (err) {
-    console.warn("phrase pool fetch failed; user dropdown will be empty", err);
+    console.warn("phrase pool fetch failed; will retry on next settings open", err);
     poolCache.items = [];
-    poolCache.loaded = true;
+    // Deliberately NOT latching loaded=true: a failed fetch (e.g. first
+    // visit raced the SW, or offline before cache warmed) retries the
+    // next time the dialog opens, so it self-heals once online.
   }
 }
 
