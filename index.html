@@ -218,12 +218,13 @@
     <div id="sticker-lib-section" hidden>
       <div class="history-header">
         <h3>🏁 成品貼圖 <span id="sticker-lib-count" class="muted">(0)</span></h3>
-        <span class="hint mini">已編輯定稿（去背＋文字都完成）的單張貼圖 — 按「＋」直接挑進套組打包。在編輯器按「存成成品」就會出現在這。</span>
+        <span class="hint mini">已編輯定稿的單張貼圖。點縮圖＝重新編輯（原參數）、點名稱＝改名、＋＝入池、勾選＝批次（入池／tag／刪除）。</span>
       </div>
       <div class="sticker-batch-bar" id="sticker-batch-bar" hidden>
         <span class="hint mini" id="sticker-batch-count"></span>
         <select id="sticker-tag-filter" title="依 tag 篩選成品"></select>
         <button type="button" class="ghost" id="sticker-batch-pool">勾選入池</button>
+        <button type="button" class="ghost" id="sticker-batch-tag">設定 tag</button>
         <button type="button" class="ghost" id="sticker-batch-delete">刪除勾選</button>
       </div>
       <div class="sticker-lib-cards" id="sticker-lib-cards"></div>
@@ -255,7 +256,7 @@
     <div id="history-section" hidden>
       <div class="history-header">
         <h3>📜 歷史 <span id="history-count" class="muted">(0)</span></h3>
-        <span class="hint mini">↻ 載入（取代貼圖池）、＋ 加入貼圖池、⭐ 收藏（可用上方篩選快速找到）、📌 重命名、🗑 刪除。全部存在你的瀏覽器，數量不設限 — 用量看上方、備份用「匯出整庫」。</span>
+        <span class="hint mini">點縮圖挑一格直接編輯；點名稱改名。↻ 載入（取代貼圖池）、＋ 加入貼圖池、⭐ 收藏、🗑 刪除。全部存在你的瀏覽器，數量不設限 — 用量看上方、備份用「匯出整庫」。</span>
       </div>
       <div class="history-cards" id="history-cards"></div>
     </div>
