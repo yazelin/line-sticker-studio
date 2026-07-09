@@ -19,7 +19,6 @@ const IDB_NAME = "line-sticker-history";
 const IDB_VERSION = 3;
 const IDB_STORE = "generations";
 const IDB_EXTRA_STORES = ["projects", "fonts", "prompts", "phraseSets", "styles", "stickers"];
-const HISTORY_NONSTARRED_CAP = 30;
 
 let _idbPromise = null;
 function idbOpen() {
@@ -4312,19 +4311,11 @@ async function saveCurrentGridToHistory(source, metadata) {
   await renderHistoryUi();
 }
 async function pruneHistory() {
-  const all = await idbListGenerations();
-  // Grids referenced by any project are protected from auto-pruning —
-  // deleting them would silently hollow out saved projects.
-  const projects = await idbAllFrom("projects");
-  const referenced = new Set();
-  for (const p of projects) for (const s of p.slots) referenced.add(s.gridId);
-  const nonStarred = all.filter((e) => !e.starred && !referenced.has(e.id));
-  nonStarred.sort((a, b) => b.timestamp - a.timestamp);
-  for (const e of nonStarred.slice(HISTORY_NONSTARRED_CAP)) {
-    await idbDeleteGeneration(e.id);
-    showToast(`📌 已自動清除最舊歷史 (達 ${HISTORY_NONSTARRED_CAP} 筆上限)`);
-  }
+  // No auto-pruning any more (拍板 2026-07-09): this is the user's own
+  // library on their own device — they manage it. Storage usage is shown
+  // in the assets tab and the vault export covers backup/migration.
 }
+
 // --- Finished stickers (成品) — the studio's中段 asset (issue: 工作室分段) ---
 
 async function stickerToCanvas(entry) {
@@ -4591,9 +4582,7 @@ async function renderHistoryUi() {
   historySection.hidden = false;
   const ns = all.filter((e) => !e.starred).length;
   const st = all.filter((e) => e.starred).length;
-  historyCount.textContent =
-    `(${ns}/${HISTORY_NONSTARRED_CAP}` + (st ? ` + ⭐ ${st}` : "") + ")";
-  historyCount.classList.toggle("warn", ns >= HISTORY_NONSTARRED_CAP - 2);
+  historyCount.textContent = `(${ns}` + (st ? ` + ⭐ ${st}` : "") + ")";
   const shown = all.filter(assetsFilterMatch);
   for (const e of shown) historyCards.appendChild(buildHistoryCard(e));
   if (shown.length === 0) {
