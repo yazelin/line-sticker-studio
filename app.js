@@ -1850,9 +1850,14 @@ document.querySelectorAll("#text-anchors button").forEach((b) =>
       y: Math.min(100, Math.max(0, ((ev.clientY - r.top) / r.height) * 100)),
     };
   };
+  // Kill the browser's native image drag-and-drop — it hijacks the
+  // pointer after a few px of movement (translucent ghost image) and the
+  // text stops following. Click-to-place still works; drag now stays ours.
+  img.addEventListener("dragstart", (ev) => ev.preventDefault());
   img.addEventListener("pointerdown", (ev) => {
     const tile = state.tiles[tileDialogIdx];
     if (!tile?.textParams?.text) return;
+    ev.preventDefault();
     dragging = true;
     img.classList.add("dragging-text");
     try { img.setPointerCapture(ev.pointerId); } catch { /* synthetic events */ }

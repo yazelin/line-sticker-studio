@@ -1610,7 +1610,12 @@ body.is-offline .theme-gen-row {
   color: #fff;
 }
 .warn-line { color: #c8843a; font-weight: 700; }
-#tile-dialog-img { touch-action: none; }
+#tile-dialog-img {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
 #tile-dialog-img.dragging-text { cursor: grabbing; }
 
 /* --- Sticker pool: pack-size chips + per-tile toolbar (issues #4/#5) --- */
