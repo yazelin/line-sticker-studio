@@ -116,6 +116,27 @@ test("native image drag is suppressed; drag keeps following across moves", async
   expect(bottomBand).toBeGreaterThan(300);
 });
 
+test("safe-zone guide overlays the preview at scaled 10px inset; violation flips it", async ({ page }) => {
+  await openZoom(page);
+  const img = page.locator("#tile-dialog-img");
+  const guide = page.locator("#tile-safe-guide");
+  await expect(guide).toBeVisible();
+
+  const ib = await img.boundingBox();
+  const gb = await guide.boundingBox();
+  const expectInset = (10 * ib.width) / 370;
+  expect(Math.abs((gb.x - ib.x) - expectInset)).toBeLessThan(2);
+  expect(Math.abs((ib.x + ib.width) - (gb.x + gb.width) - expectInset)).toBeLessThan(2);
+
+  // In-bounds text → normal guide; drag to the corner → violate class.
+  await page.locator("#text-content").fill("安全");
+  await expect(guide).not.toHaveClass(/violate/);
+  await img.dispatchEvent("pointerdown", { clientX: ib.x + 3, clientY: ib.y + 3, pointerId: 11 });
+  await img.dispatchEvent("pointerup", { pointerId: 11 });
+  await expect(guide).toHaveClass(/violate/);
+  await expect(page.locator("#text-margin-warn")).toBeVisible();
+});
+
 test("queryLocalFonts (stubbed) fills the local-font group", async ({ page }) => {
   // Re-init with the API present.
   await page.addInitScript(() => {

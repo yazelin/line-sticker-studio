@@ -1797,16 +1797,47 @@ function refreshTileDialogPreviewOnly() {
   if (tile) tileDialogImg.src = tileDataUrl(tile);
 }
 
+// Scale the 10px (canvas-space) safe inset into on-screen pixels and
+// paint it as a dashed frame ON the preview — no scrolling down to a
+// text warning to know you're out of bounds.
+function updateSafeGuide(tile) {
+  const g = $("tile-safe-guide");
+  if (!g || !tileDialogImg) return;
+  const cw = tile?.canvas.width || STICKER_W;
+  const ch = tile?.canvas.height || STICKER_H;
+  const dw = tileDialogImg.clientWidth;
+  const dh = tileDialogImg.clientHeight;
+  if (!dw || !dh) return;
+  const ix = (10 * dw) / cw;
+  const iy = (10 * dh) / ch;
+  g.style.left = `${ix}px`;
+  g.style.top = `${iy}px`;
+  g.style.right = `${ix}px`;
+  g.style.bottom = `${iy}px`;
+}
+
 function refreshTextMarginWarn(tile) {
   const warn = $("text-margin-warn");
+  const guide = $("tile-safe-guide");
   if (!warn) return;
+  updateSafeGuide(tile);
   const tp = tile.textParams;
-  if (!tp || !tp.text) { warn.hidden = true; return; }
+  if (!tp || !tp.text) {
+    warn.hidden = true;
+    guide?.classList.remove("violate");
+    return;
+  }
   const w = tile.canvas.width;
   const h = tile.canvas.height;
   const b = textBounds(tp, w, h);
-  warn.hidden = !(b.left < 10 || b.top < 10 || b.right > w - 10 || b.bottom > h - 10);
+  const out = b.left < 10 || b.top < 10 || b.right > w - 10 || b.bottom > h - 10;
+  warn.hidden = !out;
+  guide?.classList.toggle("violate", out);
 }
+tileDialogImg?.addEventListener("load", () => updateSafeGuide(state.tiles[tileDialogIdx]));
+window.addEventListener("resize", () => {
+  if (tileDialog?.open) updateSafeGuide(state.tiles[tileDialogIdx]);
+});
 
 function syncTextPanelFromTile(tile) {
   const tp = tile.textParams || TEXT_DEFAULTS;

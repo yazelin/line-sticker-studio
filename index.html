@@ -457,7 +457,10 @@
   <dialog id="tile-dialog" class="tile-dialog">
     <h3 id="tile-dialog-title">放大檢視</h3>
     <div class="tile-dialog-stage">
-      <img id="tile-dialog-img" alt="貼圖放大預覽" draggable="false" />
+      <div class="tile-dialog-imgwrap">
+        <img id="tile-dialog-img" alt="貼圖放大預覽" draggable="false" />
+        <div id="tile-safe-guide" class="tile-safe-guide" title="LINE 10px 安全留白：貼圖內容(含文字)請留在框內"></div>
+      </div>
     </div>
     <p class="hint mini" id="tile-dialog-status"></p>
     <div class="tile-dialog-controls">
