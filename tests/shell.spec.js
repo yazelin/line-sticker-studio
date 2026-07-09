@@ -39,7 +39,9 @@ test("upload lands in ASSETS (material stage); pool is silently ready", async ({
   await expect(page.locator("#history-section")).toBeVisible();
   expect(page.url()).toContain("#assets");
   // Pool got prepared in the background.
-  await page.locator('.studio-tab[data-tab="pack"]').click();
+  // P6: the toast carries a one-tap「去打包」action.
+  await page.locator(".toast .toast-action").click();
+  expect(page.url()).toContain("#pack");
   await expect(page.locator("#stickers-grid .sticker-cell")).toHaveCount(9);
   await expect(page.locator("#pack-source-cards .pack-source-card")).toHaveCount(1);
 });

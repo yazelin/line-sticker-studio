@@ -42,8 +42,10 @@ test("strength change re-runs from original: aggressive ≥ safe transparency", 
   expect(await transparentPixelCount(page, SEL)).toBe(nSafe);
 });
 
-test("restore returns the pristine tile (zero transparency)", async ({ page }) => {
+test("editor restore returns the pristine tile (zero transparency)", async ({ page }) => {
   await runRemoval(page);
-  await page.locator("#bg-restore-btn").click();
+  await page.locator("#stickers-grid .sticker-cell").first().locator("img").click();
+  await page.locator("#tile-restore-btn").click();
+  await page.locator("#tile-dialog-x").click();
   expect(await transparentPixelCount(page, SEL)).toBe(0);
 });

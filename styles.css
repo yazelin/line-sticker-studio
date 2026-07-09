@@ -352,6 +352,16 @@ main {
 }
 
 /* Toast for eviction notification */
+.toast .toast-action {
+  margin-left: 0.6rem;
+  padding: 0.25rem 0.7rem;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--line-green-hover, #05a548);
+  font-weight: 800;
+  cursor: pointer;
+}
 .toast {
   position: fixed;
   bottom: 24px;
@@ -1213,6 +1223,7 @@ button, .primary, .ghost {
   color: var(--muted);
   letter-spacing: 0.05em;
 }
+.tile-badge-final { background: #2f9e63; }
 .tile-badge {
   font-size: 0.62rem;
   font-weight: 800;

@@ -251,11 +251,11 @@ const I18N = {
     "ko": "스티커 생성",
   },
   bg_remove_btn: {
-    "zh-TW": "全部去背（chroma key）",
-    "zh-CN": "全部去背（chroma key）",
-    "en": "Remove all backgrounds (chroma key)",
-    "ja": "全部の背景を除去 (chroma key)",
-    "ko": "모든 배경 제거 (chroma key)",
+    "zh-TW": "一鍵全部去背（整池）",
+    "zh-CN": "一键全部去背（整池）",
+    "en": "Key out ALL backgrounds (whole pool)",
+    "ja": "全タイルの背景を一括除去",
+    "ko": "전체 배경 일괄 제거",
   },
   bg_restore_btn: {
     "zh-TW": "還原 Key 底",
@@ -728,7 +728,6 @@ function resetAll() {
   $("step-download").hidden = true;
   $("gen-progress").hidden = true;
   $("bg-progress").hidden = true;
-  $("bg-restore-btn").hidden = true;
   $("stickers-grid").innerHTML = "";
   document.body.classList.remove("byog-mode");
 }
@@ -824,7 +823,6 @@ async function generateAll() {
   state.tabTile = null;
   state.bgRemoved = false;
   startNewProjectIdentity();
-  $("bg-restore-btn").hidden = true;
 
   const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
 
@@ -844,7 +842,8 @@ async function generateAll() {
   for (let i = 0; i < GRID_SIZE; i++) {
     grid.appendChild(buildPlaceholderCell(i));
   }
-  switchTab("pack");
+  // Stay HERE while generating — the progress bar lives in this tab.
+  // 產料完成後和 BYOG 上傳一樣回素材庫(P1:產出物先進倉庫)。
 
   const callStart = Date.now();
   const ticker = setInterval(() => {
@@ -909,9 +908,11 @@ async function generateAll() {
     }
     renderPool();
 
-    setGenProgress(100, `完成！產出 ${GRID_SIZE} 格、預設勾選 ${PACK_SIZE} 張打包。可自由換勾選，或把更多 grid 入池湊 16–40 張大套組。`);
+    setGenProgress(100, `完成！產出 ${GRID_SIZE} 格，已存入素材庫。`);
     $("step-download").hidden = false;
-    switchTab("pack");
+    showToast("AI 生成完成，已存入素材庫；9 格也已進貼圖池",
+      { label: "→ 去打包", onClick: () => switchTab("pack") });
+    switchTab("assets");
   } catch (err) {
     clearInterval(ticker);
     console.error(err, err.detail ? `detail=${err.detail}` : "");
@@ -1097,7 +1098,6 @@ async function handleGridUploads(fileList) {
   state.tabTile = null;
   state.bgRemoved = false;
   startNewProjectIdentity();
-  $("bg-restore-btn").hidden = true;
   document.body.classList.add("byog-mode");
 
   for (const file of files) {
@@ -1126,7 +1126,8 @@ async function handleGridUploads(fileList) {
   $("step-download").hidden = false;
   renderPool();
   gridFileInput.value = "";
-  showToast(`已存入素材庫 ${files.length} 張；${state.tiles.length} 格已進貼圖池、套組張數自動設 ${state.packSize}（要打包到「組包出貨」）`);
+  showToast(`已存入素材庫 ${files.length} 張；${state.tiles.length} 格已進貼圖池、套組張數自動設 ${state.packSize}`,
+    { label: "→ 去打包", onClick: () => switchTab("pack") });
   switchTab("assets");
 }
 
@@ -1262,7 +1263,6 @@ async function handleGridUpload(file) {
   state.tabTile = null;
   state.bgRemoved = false;
   startNewProjectIdentity();
-  $("bg-restore-btn").hidden = true;
   document.body.classList.add("byog-mode");
 
   // Save the uploaded file as the current grid + add to history.
@@ -1289,7 +1289,8 @@ async function handleGridUpload(file) {
   }
   renderPool();
   $("step-download").hidden = false;
-  showToast(`${uploadNote}已存入素材庫；9 格也已進貼圖池（要打包到「組包出貨」）`);
+  showToast(`${uploadNote}已存入素材庫；9 格也已進貼圖池`,
+    { label: "→ 去打包", onClick: () => switchTab("pack") });
   switchTab("assets");
 }
 
@@ -1583,6 +1584,13 @@ function renderTileIntoCell(idx, tile) {
   num.className = "tile-num";
   num.textContent = String(idx + 1).padStart(2, "0");
   bar.appendChild(num);
+  if (tile.srcStickerId) {
+    const fin = document.createElement("span");
+    fin.className = "tile-badge tile-badge-final";
+    fin.textContent = "稿";
+    fin.title = "已定稿的成品(在素材庫可 re-edit,會同步回這格)";
+    bar.appendChild(fin);
+  }
   if (state.mainTile === tile) {
     const b = document.createElement("span");
     b.className = "tile-badge";
@@ -1928,20 +1936,49 @@ $("tile-save-sticker-btn")?.addEventListener("click", async () => {
   }
   const blob = await canvasToBlob(composed, "image/png");
   const id = tile.srcStickerId || `stk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const existing = tile.srcStickerId ? await idbGetFrom("stickers", tile.srcStickerId) : null;
   await idbPut("stickers", {
     id,
-    name: null,
-    createdAt: Date.now(),
+    name: existing?.name || null,
+    tag: existing?.tag || null,
+    createdAt: existing?.createdAt || Date.now(),
     updatedAt: Date.now(),
-    srcGridId: tile.srcGridId,
-    srcIdx: tile.srcIdx,
+    srcGridId: tile.srcGridId ?? existing?.srcGridId ?? null,
+    srcIdx: tile.srcIdx ?? existing?.srcIdx ?? -1,
     cleanParams: tile.cleanParams || null,
     textParams: tile.textParams || null,
     pngBlob: blob,
   });
+  // P2: single source of truth — pool slots bound to this sticker (and,
+  // when saving FROM a pool tile, that tile itself) now carry the baked
+  // finished PNG.
+  const bakeInto = (t) => {
+    const c = document.createElement("canvas");
+    c.width = composed.width;
+    c.height = composed.height;
+    c.getContext("2d").drawImage(composed, 0, 0);
+    t.canvas = c;
+    t.originalCanvas = c;
+    t.transparent = true;
+    t.cleanParams = null;
+    t.textParams = null;
+    t.srcStickerId = id;
+    t._url = null;
+  };
+  if (editorInPool()) bakeInto(tile);
+  for (const t of state.tiles) {
+    if (t !== tile && t.srcStickerId === id) bakeInto(t);
+  }
+  renderPool();
+  if (editorInPool() || editorDetachedTile) {
+    refreshTileDialog();
+    syncTextPanelFromTile(editorTile());
+  }
   await renderStickerLibrary();
   await renderHistoryUi();
-  showToast("✓ 已定稿存入素材庫「成品貼圖」— 隨時可挑進任何套組");
+  showToast(editorInPool()
+    ? "✓ 已定稿成成品，池中這格已連結成品（之後 re-edit 成品會同步）"
+    : "✓ 已定稿存入素材庫「成品貼圖」— 隨時可挑進任何套組");
 });
 
 $("tile-include-btn")?.addEventListener("click", () => {
@@ -2557,10 +2594,7 @@ function confirmPoolReplace() {
   );
 }
 
-function showGridDownload() {
-  const btn = $("download-grid-btn");
-  if (btn) btn.hidden = false;
-}
+function showGridDownload() { /* 原始 grid 下載已移至素材庫(P4) */ }
 async function downloadOriginalGrid() {
   if (!state.lastGridPng) {
     alert("沒有原始 grid PNG — 先生成一次。");
@@ -2687,7 +2721,6 @@ async function rerollTile(idx, overridePhrase = null) {
 // Step 3 — background removal (client-side)
 
 const bgRemoveBtn = $("bg-remove-btn");
-const bgRestoreBtn = $("bg-restore-btn");
 const bgProgress = $("bg-progress");
 const bgBarFill = $("bg-bar-fill");
 const bgProgressText = $("bg-progress-text");
@@ -2699,9 +2732,6 @@ if (bgKeySelect) {
 }
 
 bgRemoveBtn.addEventListener("click", removeAllBackgrounds);
-bgRestoreBtn.addEventListener("click", restoreAllBackgrounds);
-const downloadGridBtn = $("download-grid-btn");
-if (downloadGridBtn) downloadGridBtn.addEventListener("click", downloadOriginalGrid);
 
 // (Previously ensureBgLib loaded @imgly's ISNet model for white-bg
 // fallback. Removed — chroma-key is the only path now. No 30MB ML
@@ -2724,7 +2754,6 @@ async function removeAllBackgrounds() {
     }
     state.bgRemoved = true;
     setBgProgress(100, `完成！${state.tiles.length} 張已去背。`);
-    bgRestoreBtn.hidden = false;
     scheduleProjectSave();
   } catch (err) {
     console.error(err);
@@ -2734,21 +2763,6 @@ async function removeAllBackgrounds() {
   }
 }
 
-async function restoreAllBackgrounds() {
-  // Real restore: replace each tile.canvas with the saved snapshot of
-  // the pristine Gemini-cropped tile (taken before bg removal). This
-  // fully undoes the bg removal — including outline / shadow / etc.
-  for (let i = 0; i < state.tiles.length; i++) {
-    const tile = state.tiles[i];
-    restoreTile(tile);
-    renderTileIntoCell(i, tile);
-  }
-  state.bgRemoved = false;
-  bgRestoreBtn.hidden = true;
-  scheduleProjectSave();
-  const key = chromaKeyColor();
-  setBgProgress(0, `已還原成 Gemini 原圖（${key.label} ${key.hex} + 黑邊）。可重新去背。`);
-}
 
 function setBgProgress(pct, text) {
   bgBarFill.style.width = `${pct}%`;
@@ -4322,13 +4336,21 @@ const historySection = $("history-section");
 const historyCards = $("history-cards");
 const historyCount = $("history-count");
 
-function showToast(message) {
+function showToast(message, action = null) {
   document.querySelector(".toast")?.remove();
   const t = document.createElement("div");
   t.className = "toast";
   t.textContent = message;
+  if (action) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "toast-action";
+    b.textContent = action.label;
+    b.addEventListener("click", () => { t.remove(); action.onClick(); });
+    t.appendChild(b);
+  }
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 5200);
+  setTimeout(() => t.remove(), action ? 8000 : 5200);
 }
 function escapeHtmlSafe(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -4787,7 +4809,6 @@ async function loadFromHistory(id) {
   }
   renderPool();
   $("step-download").hidden = false;
-  $("bg-restore-btn").hidden = true;
   await renderCurrentGridUi();
   await renderHistoryUi();
   switchTab("pack");

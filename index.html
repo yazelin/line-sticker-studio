@@ -640,12 +640,12 @@
       <span class="pack-sources-label">從既有 grid 加格子：</span>
       <div class="pack-source-cards" id="pack-source-cards"></div>
     </div>
-    <p class="hint">點任一張可以重抽（仍會耗 API 呼叫）。LINE 上架需要透明背景，按下面按鈕在你的瀏覽器內跑去背模型，圖片不會上傳到任何伺服器。</p>
+    <p class="hint">LINE 上架需要透明背景：「一鍵全部去背」在你的瀏覽器內處理整池（圖不上傳）。<strong>單張細修、加字、換 key 請點該格進編輯器</strong>；還原原圖也在編輯器裡。</p>
 
     <div class="preview-actions">
       <button class="primary" id="bg-remove-btn">
         <svg class="btn-icon"><use href="#i-scissors"/></svg>
-        <span data-i18n="bg_remove_btn">全部去背（chroma key）</span>
+        <span data-i18n="bg_remove_btn">一鍵全部去背（整池）</span>
       </button>
       <label class="bg-tune" for="bg-tune-select" title="保守：最不容易吃掉前景綠色；積極：綠背景去更乾淨">
         去背強度
@@ -662,14 +662,6 @@
           <option value="magenta">洋紅幕</option>
         </select>
       </label>
-      <button class="ghost" id="bg-restore-btn" hidden>
-        <svg class="btn-icon"><use href="#i-refresh"/></svg>
-        <span data-i18n="bg_restore_btn">還原 Key 底</span>
-      </button>
-      <button class="ghost" id="download-grid-btn" hidden title="下載 Gemini 原始 3×3 grid PNG（備份用、之後可走 BYOG 重切）">
-        <svg class="btn-icon"><use href="#i-download"/></svg>
-        <span data-i18n="download_grid_btn">下載原始 grid</span>
-      </button>
     </div>
 
     <div id="bg-progress" hidden>
