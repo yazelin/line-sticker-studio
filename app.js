@@ -230,18 +230,18 @@ const I18N = {
     "ko": "② 스타일 + 문구 (양 경로 공통)",
   },
   step_preview_title: {
-    "zh-TW": "③ 預覽 + 去背",
-    "zh-CN": "③ 预览 + 去背",
-    "en": "③ Preview + Background Removal",
-    "ja": "③ プレビュー + 背景除去",
-    "ko": "③ 미리보기 + 배경 제거",
+    "zh-TW": "🧺 貼圖池：挑選・去背・排序",
+    "zh-CN": "🧺 贴图池：挑选・去背・排序",
+    "en": "🧺 Pool: pick, key-out, arrange",
+    "ja": "🧺 プール：選択・背景除去・並べ替え",
+    "ko": "🧺 풀: 선택·배경 제거·정렬",
   },
   step_download_title: {
-    "zh-TW": "④ 下載 + 上架",
-    "zh-CN": "④ 下载 + 上架",
-    "en": "④ Download + Submit",
-    "ja": "④ ダウンロード + アップロード",
-    "ko": "④ 다운로드 + 업로드",
+    "zh-TW": "📦 出貨：檢查 + 下載",
+    "zh-CN": "📦 出货：检查 + 下载",
+    "en": "📦 Ship: check + download",
+    "ja": "📦 出荷：チェック + ダウンロード",
+    "ko": "📦 출고: 점검 + 다운로드",
   },
   generate_btn: {
     "zh-TW": "開始生成貼圖",
@@ -1813,6 +1813,9 @@ function refreshTileDialog() {
   $("tile-set-tab-btn")?.classList.toggle("active", state.tabTile === tile);
   const rerollBtn = $("tile-reroll-btn");
   if (rerollBtn) rerollBtn.hidden = !state.sourceFile;
+  if (tileCleanBtn) {
+    tileCleanBtn.textContent = tile.cleanParams ? "重新去背（只這張）" : "去背（只這張）";
+  }
   if (tile.cleanParams) {
     const keyLabel = CHROMA_KEYS[tile.cleanParams.key]?.label || tile.cleanParams.key;
     const t = tile.cleanParams.tune;
@@ -2389,8 +2392,12 @@ async function appendFromHistory(id) {
 
 const WORKSPACES = ["create", "assets", "pack"];
 
-function switchTab(tab, { push = true } = {}) {
+const _tabScroll = { create: 0, assets: 0, pack: 0 };
+
+function switchTab(tab, { push = true, resume = false } = {}) {
   if (!WORKSPACES.includes(tab)) tab = "create";
+  const prev = document.body.dataset.tab;
+  if (prev && WORKSPACES.includes(prev)) _tabScroll[prev] = window.scrollY;
   document.body.dataset.tab = tab;
   document.querySelectorAll(".studio-tab").forEach((b) =>
     b.classList.toggle("active", b.dataset.tab === tab));
@@ -2398,11 +2405,13 @@ function switchTab(tab, { push = true } = {}) {
     // replaceState keeps back-button history sane (no tab-spam entries).
     history.replaceState(null, "", `#${tab}`);
   }
-  window.scrollTo({ top: 0 });
+  // Manual tab clicks RESUME where you left off (studio muscle memory);
+  // flow-driven switches (upload done, go pack…) land at the top.
+  window.scrollTo({ top: resume ? (_tabScroll[tab] || 0) : 0 });
 }
 
 document.querySelectorAll(".studio-tab").forEach((b) =>
-  b.addEventListener("click", () => switchTab(b.dataset.tab)));
+  b.addEventListener("click", () => switchTab(b.dataset.tab, { resume: true })));
 window.addEventListener("hashchange", () =>
   switchTab(location.hash.slice(1) || "create", { push: false }));
 switchTab(location.hash.slice(1) || "create", { push: false });

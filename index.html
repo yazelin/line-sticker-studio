@@ -139,7 +139,6 @@
     </label>
   </section>
 
-  <p class="path-picker-hint">① 選一條輸入路徑（A 主流 / B 省 API），然後到 ② 設定樣式</p>
 
   <nav class="studio-nav" id="studio-nav" aria-label="工作區切換">
     <button type="button" class="studio-tab active" data-tab="create">企劃生圖</button>
@@ -230,6 +229,8 @@
       <div class="sticker-lib-cards" id="sticker-lib-cards"></div>
     </div>
 
+    <details class="tip-box" id="current-grid-box">
+      <summary><strong>📥 目前載入的 grid（原始檔／下載備份）</strong></summary>
     <!-- Current grid preview area (hidden until something loaded) -->
     <div id="current-grid-area" hidden>
       <div class="current-grid-meta">
@@ -249,8 +250,9 @@
 
     <!-- Empty state -->
     <div id="current-grid-empty" class="hint">
-      👋 素材庫還是空的。到「企劃生圖」用 AI 產一張，或上傳你已經做好的 3×3 圖。
+      👋 還沒載入任何 grid。到「企劃生圖」產一張，或上傳你做好的 3×3 圖。
     </div>
+    </details>
 
     <!-- History carousel -->
     <div id="history-section" hidden>
@@ -638,7 +640,7 @@
   </div>
 
   <section class="card" id="step-preview" data-workspace="pack" hidden>
-    <h2 data-i18n="step_preview_title">③ 貼圖池：預覽 + 去背</h2>
+    <h2 data-i18n="step_preview_title">🧺 貼圖池：挑選・去背・排序</h2>
     <div class="pack-sources" id="pack-sources" hidden>
       <span class="pack-sources-label">從既有 grid 加格子：</span>
       <div class="pack-source-cards" id="pack-source-cards"></div>
@@ -672,7 +674,7 @@
       <span id="bg-progress-text">載入去背模型…</span>
     </div>
 
-    <p class="hint">右上 ✓/✗ 控制是否打包。<strong>點貼圖 = 放大編輯</strong>（去背、文字、主圖/標籤、下載）；<strong>按住拖曳 = 換順序</strong>（手機長按再拖）。大套組：選張數後從「歷史」＋ 或多選上傳把格子加進池。</p>
+    <p class="hint">✓ 選入／✗ 排除；<strong>點圖＝編輯</strong>、<strong>按住拖＝排序</strong>（手機長按）。缺格子就從上方「＋」或素材庫加。</p>
     <div class="pack-size-row">
       <span class="pack-size-label">LINE 套組張數</span>
       <div class="pack-size-chips" id="pack-size-chips"></div>
@@ -682,7 +684,7 @@
   </section>
 
   <section class="card" id="step-download" data-workspace="pack" hidden>
-    <h2 data-i18n="step_download_title">④ 下載 + 上架</h2>
+    <h2 data-i18n="step_download_title">📦 出貨：檢查 + 下載</h2>
 
     <button class="primary big" id="download-zip-btn">
       <svg class="btn-icon"><use href="#i-zip"/></svg>
@@ -697,7 +699,7 @@
       💡 不打算上架 LINE？這個按鈕一次給你 9 張獨立透明 PNG，貼到 Slack 表情、Discord emoji、Notion、PPT、Word、IG 限動，都行。檔名會帶上每張的短語，方便日後找。
     </p>
 
-    <details class="tip-box" open>
+    <details class="tip-box">
       <summary><strong>上架到 LINE Creators Market 完整步驟</strong></summary>
       <div class="tip-body">
         <p><strong>① 註冊 / 登入 Creators 帳號</strong></p>

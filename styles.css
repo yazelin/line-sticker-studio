@@ -1331,6 +1331,26 @@ button, .primary, .ghost {
 
 /* --- Studio shell: three-workspace tabs (issue #24) --- */
 
+/* 工作室門面收斂:企劃分頁保留完整 hero;素材庫/組包只留一行品牌,
+   工作區內容第一屏就是工具,不用每個分頁都先滑過行銷區。 */
+body[data-tab="assets"] header .tagline,
+body[data-tab="pack"] header .tagline,
+body[data-tab="assets"] header .howto,
+body[data-tab="pack"] header .howto,
+body[data-tab="assets"] header .howto-byog-hint,
+body[data-tab="pack"] header .howto-byog-hint {
+  display: none;
+}
+body[data-tab="assets"] header,
+body[data-tab="pack"] header {
+  padding-bottom: 0.2rem;
+}
+body[data-tab="assets"] header h1,
+body[data-tab="pack"] header h1 {
+  font-size: 1.35rem;
+  margin-bottom: 0.1rem;
+}
+
 .studio-nav {
   position: sticky;
   top: 0;
@@ -1373,6 +1393,16 @@ body.has-pool #pack-empty { display: none; }
 @media (max-width: 700px) {
   /* Fixed bottom nav: keep auto-scrolled targets clear of it. */
   html { scroll-padding-bottom: 5.2rem; }
+  .toast { bottom: 5.4rem !important; z-index: 60; }
+  /* 專案面板手機緊湊化 */
+  .project-bar { gap: 0.35rem; padding: 0.4rem 0.5rem; }
+  .project-bar .ghost { padding: 0.35rem 0.8rem; font-size: 0.85rem; }
+  .project-bar select, .project-bar input { font-size: 0.82rem; }
+  /* 編輯器頭列:單行排好,「已選入」不再直排 */
+  .editor-head { flex-wrap: nowrap; gap: 0.35rem; }
+  .editor-nav h3 { font-size: 1rem; }
+  .editor-nav button { min-width: 34px; padding: 0.3rem 0.4rem; }
+  .editor-include { padding: 0.3rem 0.55rem; font-size: 0.8rem; }
   .studio-nav {
     position: fixed;
     top: auto;
@@ -1668,7 +1698,7 @@ body.is-offline .theme-gen-row {
 }
 .editor-nav h3 { margin: 0; white-space: nowrap; }
 .editor-nav button { min-width: 40px; font-weight: 800; }
-.editor-include { margin-left: auto; }
+.editor-include { margin-left: auto; white-space: nowrap; }
 .editor-include.off { opacity: 0.55; }
 
 /* Two-pane editor: preview stays put, tools scroll independently. */
