@@ -46,10 +46,10 @@ export async function stubExternal(page) {
 // 1024×1024 (not divisible by 3 — exercises the Math.floor split path).
 // Each cell: bg color + a dark-red rounded blob so the character survives
 // chroma-key. bg: "green" | "magenta" | "white".
-export async function makeGridBuffer(page, bg = "green", size = 1024) {
-  const dataUrl = await page.evaluate(({ bg, size }) => {
+export async function makeGridBuffer(page, bg = "green", size = 1024, height = null) {
+  const dataUrl = await page.evaluate(({ bg, size, height }) => {
     const c = document.createElement("canvas");
-    c.width = size; c.height = size;
+    c.width = size; c.height = height || size;
     const ctx = c.getContext("2d");
     const BG = { green: "#00FF00", magenta: "#FF00FF", white: "#FFFFFF" }[bg];
     ctx.fillStyle = BG;
@@ -71,7 +71,7 @@ export async function makeGridBuffer(page, bg = "green", size = 1024) {
       }
     }
     return c.toDataURL("image/png");
-  }, { bg, size });
+  }, { bg, size, height });
   return Buffer.from(dataUrl.split(",")[1], "base64");
 }
 
