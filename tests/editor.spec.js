@@ -49,6 +49,9 @@ test("editing layout keeps preview and text tools in view together", async ({ pa
       .evaluate((el) => getComputedStyle(el).position);
     expect(pos).toBe("sticky");
   } else {
+    // The editor is a real workspace, not a 480px popup.
+    const dlg = await page.locator("#tile-dialog").boundingBox();
+    expect(dlg.width).toBeGreaterThan(900);
     // Side-by-side: tools column starts right of the stage.
     expect(textarea.x).toBeGreaterThan(stage.x + stage.width - 5);
     // Both visible in the viewport at once — no scroll ping-pong.
