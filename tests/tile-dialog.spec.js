@@ -20,7 +20,7 @@ function zoomBtn(page, i) {
 test("zoom opens with the tile image and raw status", async ({ page }) => {
   await zoomBtn(page, 0).click();
   await expect(page.locator("#tile-dialog")).toBeVisible();
-  await expect(page.locator("#tile-dialog-title")).toHaveText("第 01 張");
+  await expect(page.locator("#tile-dialog-title")).toHaveText("第 01 / 09 張");
   await expect(page.locator("#tile-dialog-status")).toContainText("未去背");
   const cellSrc = await page.locator(CELL_IMG(0)).getAttribute("src");
   expect(await page.locator("#tile-dialog-img").getAttribute("src")).toBe(cellSrc);

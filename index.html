@@ -456,20 +456,44 @@
 
   <dialog id="tile-dialog" class="tile-dialog">
    <div class="tile-dialog-body">
-    <button type="button" class="tile-dialog-x" id="tile-dialog-x" aria-label="關閉">✕</button>
-    <h3 id="tile-dialog-title">放大檢視</h3>
-    <div class="tile-dialog-actions-row">
-      <button type="button" class="ghost" id="tile-set-main-btn" title="這張當 main.png（商店門面 240×240）">主圖</button>
-      <button type="button" class="ghost" id="tile-set-tab-btn" title="這張當聊天室標籤 tab.png（96×74）">標籤</button>
-      <button type="button" class="ghost" id="tile-reroll-btn" hidden title="用 AI 重抽這一格（耗 1 次呼叫）">重抽</button>
-    </div>
-    <div class="tile-dialog-stage">
-      <div class="tile-dialog-imgwrap">
-        <img id="tile-dialog-img" alt="貼圖放大預覽" draggable="false" />
-        <div id="tile-safe-guide" class="tile-safe-guide" title="LINE 10px 安全留白：貼圖內容(含文字)請留在框內"></div>
+    <div class="editor-head">
+      <div class="editor-nav">
+        <button type="button" class="ghost" id="tile-prev" title="上一張（←）">←</button>
+        <h3 id="tile-dialog-title">貼圖編輯器</h3>
+        <button type="button" class="ghost" id="tile-next" title="下一張（→）">→</button>
       </div>
+      <button type="button" class="ghost editor-include" id="tile-include-btn" title="這張是否打包進套組">✓ 已選入</button>
+      <button type="button" class="tile-dialog-x" id="tile-dialog-x" aria-label="關閉">✕</button>
     </div>
-    <p class="hint mini" id="tile-dialog-status"></p>
+    <div class="tile-dialog-layout">
+
+      <div class="tile-dialog-left">
+        <div class="tile-dialog-stage">
+          <div class="tile-dialog-imgwrap">
+            <img id="tile-dialog-img" alt="貼圖放大預覽" draggable="false" />
+            <div id="tile-safe-guide" class="tile-safe-guide" title="LINE 10px 安全留白：貼圖內容(含文字)請留在框內"></div>
+          </div>
+        </div>
+        <p class="hint mini" id="tile-dialog-status"></p>
+        <p class="hint mini warn-line" id="text-margin-warn" hidden>⚠ 文字可能超出 LINE 的 10px 安全留白，上架有風險。</p>
+        <div class="tile-dialog-actions-row">
+          <button type="button" class="ghost" id="tile-set-main-btn" title="這張當 main.png（商店門面 240×240）">主圖</button>
+          <button type="button" class="ghost" id="tile-set-tab-btn" title="這張當聊天室標籤 tab.png（96×74）">標籤</button>
+          <button type="button" class="ghost" id="tile-reroll-btn" hidden title="用 AI 重抽這一格（耗 1 次呼叫）">重抽</button>
+        </div>
+        <menu class="tile-dialog-menu">
+          <button type="button" class="ghost" id="tile-dialog-close">關閉</button>
+          <button type="button" class="ghost" id="tile-single-dl-btn">
+            <svg class="btn-icon"><use href="#i-download"/></svg>
+            下載 PNG
+          </button>
+          <button type="button" class="primary" id="tile-share-btn" hidden>分享這張</button>
+        </menu>
+      </div>
+
+      <div class="tile-dialog-right">
+        <section class="edit-sec">
+          <h4 class="edit-sec-title">去背</h4>
     <div class="tile-dialog-controls">
       <label class="bg-tune">Key
         <select id="tile-key-select" aria-label="這張的 Chroma Key 顏色">
@@ -487,9 +511,7 @@
       <button type="button" class="primary" id="tile-clean-btn">重新去背（只這張）</button>
       <button type="button" class="ghost" id="tile-restore-btn">還原原始切圖</button>
     </div>
-    <p class="hint mini">單張重去背永遠從原始切圖重算，調幾次都不會疊加髒邊。棋盤格 = 透明區。</p>
-
-    <details class="tile-text-panel" id="tile-advanced">
+        <details class="tile-text-panel" id="tile-advanced">
       <summary><strong>🎛 去背進階細調（蓋過上面的強度檔位，只影響這張）</strong></summary>
       <p class="hint mini">拉桿即時重算（永遠從原始切圖）。往左 = 去更兇、往右 = 更保守。調到滿意就好，參數會存進專案。</p>
       <div class="text-row">
@@ -513,8 +535,10 @@
         <button type="button" class="ghost" id="tile-adv-reset">回檔位預設</button>
       </div>
     </details>
-
-    <details class="tile-text-panel" id="tile-text-panel">
+          <p class="hint mini">單張重去背永遠從原始切圖重算，調幾次都不會疊加髒邊。棋盤格 = 透明區。</p>
+        </section>
+        <section class="edit-sec">
+        <details class="tile-text-panel" id="tile-text-panel" open>
       <summary><strong>✍ 文字圖層（建議搭配無字生圖）</strong></summary>
       <p class="hint mini">改字、換字型、搬位置都在你的瀏覽器完成 — 不重生圖、零 API 成本、任何語言。</p>
       <textarea id="text-content" placeholder="這格要印的字（留空 = 不印字，Enter = 換行）" maxlength="60" rows="2"></textarea>
@@ -557,17 +581,12 @@
         <label class="text-mini"><input type="checkbox" id="text-layer-below" /> 文字放角色下層</label>
         <span class="hint mini">想放特別的位置？直接在上面的放大圖上<strong>拖曳文字</strong>。</span>
       </div>
-      <p class="hint mini warn-line" id="text-margin-warn" hidden>⚠ 文字可能超出 LINE 的 10px 安全留白，上架有風險。</p>
       <p class="hint mini">字型授權提醒：上架／商用請確認你對所選字型有商用授權（本機字型不會上傳，只在你的電腦上合成）。</p>
     </details>
-    <menu>
-      <button type="button" class="ghost" id="tile-dialog-close">關閉</button>
-      <button type="button" class="ghost" id="tile-single-dl-btn">
-        <svg class="btn-icon"><use href="#i-download"/></svg>
-        下載 PNG
-      </button>
-      <button type="button" class="primary" id="tile-share-btn" hidden>分享這張</button>
-    </menu>
+        </section>
+      </div>
+
+    </div>
    </div>
   </dialog>
 
