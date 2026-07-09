@@ -1453,6 +1453,10 @@ body.has-pool #pack-empty { display: none; }
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 
+/* Turnstile host — zero footprint while the widget stays invisible
+   (appearance: interaction-only). issue #39 */
+.cf-turnstile-host:empty { display: none; }
+
 /* --- Offline banner (issue #3) --- */
 
 .offline-banner {

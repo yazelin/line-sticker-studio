@@ -319,6 +319,10 @@ const GRID_SIZE = 9;
 // tracked in state.packSize and fed by pooling multiple grids.
 const PACK_SIZE = 8;
 const PACK_SIZES = [8, 16, 24, 32, 40];
+// One 3×3 grid has 9 cells — ALL of them user-pinnable. (Was 8: the 9th
+// cell always got a random phrase the user never asked for. In the pool
+// world you pick 8/16/24/32/40 freely, so pin all 9. issue #38)
+const SLOT_COUNT = 9;
 
 // Per-slot config persisted in localStorage. length-8 array, each entry:
 //   null              → fully random (worker picks)
@@ -327,14 +331,15 @@ const PACK_SIZES = [8, 16, 24, 32, 40];
 function loadSlotConfig() {
   try {
     const raw = localStorage.getItem(SLOT_CONFIG_KEY);
-    if (!raw) return new Array(PACK_SIZE).fill(null);
+    if (!raw) return new Array(SLOT_COUNT).fill(null);
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length !== PACK_SIZE) {
-      return new Array(PACK_SIZE).fill(null);
-    }
-    return parsed;
+    if (!Array.isArray(parsed)) return new Array(SLOT_COUNT).fill(null);
+    // Migrate legacy 8-slot configs (and any short array) by padding.
+    const cfg = parsed.slice(0, SLOT_COUNT);
+    while (cfg.length < SLOT_COUNT) cfg.push(null);
+    return cfg;
   } catch {
-    return new Array(PACK_SIZE).fill(null);
+    return new Array(SLOT_COUNT).fill(null);
   }
 }
 
@@ -462,6 +467,11 @@ async function setupTurnstileWidget() {
   if (auth.tsWidgetId !== null) return; // already rendered
   auth.tsWidgetId = window.turnstile.render("#cf-turnstile", {
     sitekey: auth.tsSiteKey,
+    // Hidden while the check passes non-interactively (the usual case);
+    // only surfaces when Cloudflare actually needs the user to interact.
+    // NOT the same as hard-hiding a Managed widget (that deadlocks the
+    // interactive challenge → 403). No dashboard change needed. issue #39
+    appearance: "interaction-only",
     callback: (token) => { auth.tsToken = token; },
     "expired-callback": () => { auth.tsToken = null; },
     "error-callback": () => { auth.tsToken = null; },
@@ -738,7 +748,7 @@ const estimateEl = $("estimate");
 
 function refreshEstimate() {
   estimateEl.innerHTML =
-    `預估：<strong>1</strong> 次 API 呼叫、約 <strong>${ESTIMATED_GRID_SECONDS}</strong> 秒，產出 <strong>${PACK_SIZE}</strong> 張 LINE 規格貼圖（370 × 320）。`;
+    `預估：<strong>1</strong> 次 API 呼叫、約 <strong>${ESTIMATED_GRID_SECONDS}</strong> 秒，產出 <strong>${GRID_SIZE}</strong> 格 LINE 規格貼圖（370 × 320，預設打包 ${PACK_SIZE} 張、可入池湊大套組）。`;
 }
 
 generateBtn.addEventListener("click", () => generateAll());
@@ -921,7 +931,7 @@ function showByogHandoff(headline) {
     "  2. 在 Gemini／ChatGPT「先上傳你的參考圖」，再貼上 prompt\n" +
     "     —— prompt 是描述「對這張圖做什麼」，沒附圖 prompt 就無從套用\n" +
     "  3. 下載它產的 3×3 圖，回來上傳\n\n" +
-    "→ 確定：開「自訂 8 格」dialog 複製 prompt\n" +
+    "→ 確定：開「自訂 9 格」dialog 複製 prompt\n" +
     "→ 取消：直接捲到 BYOG 上傳框",
   );
   if (proceed) {
@@ -3358,7 +3368,7 @@ const slotStatusText = $("slot-status-text");
 
 openSettingsLink.addEventListener("click", openSettings);
 slotsResetBtn.addEventListener("click", () => {
-  renderSlotGrid(new Array(PACK_SIZE).fill(null));
+  renderSlotGrid(new Array(SLOT_COUNT).fill(null));
 });
 slotsCopyBtn.addEventListener("click", copyPromptToGemini);
 
@@ -3446,15 +3456,15 @@ themeGenBtn?.addEventListener("click", async () => {
     const items = Array.isArray(aiSlots) && aiSlots.length > 0
       ? aiSlots
       : phrases.map((p) => ({ phrase: p }));
-    const cfg = items.slice(0, PACK_SIZE).map((s) => {
+    const cfg = items.slice(0, SLOT_COUNT).map((s) => {
       const slot = { phraseCustom: s.phrase };
       if (s.action) slot.action = s.action;
       return slot;
     });
-    while (cfg.length < PACK_SIZE) cfg.push(null);
+    while (cfg.length < SLOT_COUNT) cfg.push(null);
     renderSlotGrid(cfg);
     themeGenStatus.textContent =
-      `✓ 填入：${phrases.slice(0, PACK_SIZE).join(" / ")}`;
+      `✓ 填入：${phrases.slice(0, SLOT_COUNT).join(" / ")}`;
     setTimeout(() => { themeGenStatus.hidden = true; }, 8000);
   } catch (err) {
     themeGenStatus.textContent = `失敗：${err.message}`;
@@ -3478,7 +3488,7 @@ async function openSettings() {
 
 function renderSlotGrid(cfg) {
   slotGrid.innerHTML = "";
-  for (let i = 0; i < PACK_SIZE; i++) {
+  for (let i = 0; i < SLOT_COUNT; i++) {
     slotGrid.appendChild(buildSlotCell(i, cfg[i]));
   }
 }
@@ -3559,7 +3569,7 @@ function buildSlotCell(idx, slotValue) {
 }
 
 function readSlotConfigFromGrid() {
-  const cfg = new Array(PACK_SIZE).fill(null);
+  const cfg = new Array(SLOT_COUNT).fill(null);
   slotGrid.querySelectorAll(".slot-cell").forEach((cell) => {
     const i = parseInt(cell.dataset.idx, 10);
     const sel = cell.querySelector(".slot-select");
@@ -3595,13 +3605,13 @@ function refreshSlotStatus() {
     if (typeof s.action === "string" && s.action) withAction += 1;
   }
   if (pinned === 0 && custom === 0) {
-    slotStatusText.textContent = "🎲 目前：8 格短語全隨機（從內建 50 句抽）";
+    slotStatusText.textContent = "🎲 目前：9 格短語全隨機（從內建 50 句抽）";
     return;
   }
   const parts = [];
   if (pinned > 0) parts.push(`指定 ${pinned} 句預設`);
   if (custom > 0) parts.push(`自訂 ${custom} 句`);
-  const remain = PACK_SIZE - pinned - custom;
+  const remain = SLOT_COUNT - pinned - custom;
   if (remain > 0) parts.push(`其他 ${remain} 格隨機`);
   if (withAction > 0) parts.push(`${withAction} 格附動作描述`);
   slotStatusText.textContent = `🎨 你挑了：${parts.join("、")}`;
@@ -3999,13 +4009,20 @@ function assetsFilterMatch(e) {
 
 async function updateStorageUsage() {
   const el = $("storage-usage");
-  if (!el || !navigator.storage?.estimate) return;
+  if (!el) return;
+  // NOTE: navigator.storage.estimate() covers the WHOLE origin — on
+  // GitHub Pages that's every project under yazelin.github.io (their
+  // IndexedDB + caches), which reads absurdly large. Count OUR blobs.
   try {
-    const { usage } = await navigator.storage.estimate();
-    if (usage != null) {
-      el.textContent = `儲存空間已用約 ${(usage / (1024 * 1024)).toFixed(1)} MB（存在你的瀏覽器）`;
+    let bytes = 0;
+    for (const e of await idbListGenerations()) {
+      bytes += (e.gridBlob?.size || 0) + (e.thumbnailBlob?.size || 0);
     }
-  } catch { /* estimate unsupported — leave blank */ }
+    try {
+      for (const f of await idbAllFrom("fonts")) bytes += f.blob?.size || 0;
+    } catch { /* store empty */ }
+    el.textContent = `素材庫占用約 ${(bytes / (1024 * 1024)).toFixed(1)} MB（存在你的瀏覽器）`;
+  } catch { /* ignore */ }
 }
 
 function renderPackSources(all) {

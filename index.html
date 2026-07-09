@@ -184,7 +184,7 @@
       <summary><strong>怎麼自己產？</strong></summary>
       <ol>
         <li>在下面「② 選樣式 + 短語」設定好你要的風格 / 活動</li>
-        <li>點「自訂 8 格 → 複製 prompt 到 Gemini」拿到完整 prompt</li>
+        <li>點「自訂 9 格 → 複製 prompt 到 Gemini」拿到完整 prompt</li>
         <li>到 <a href="https://gemini.google.com" target="_blank" rel="noopener">gemini.google.com</a> 或 ChatGPT，<strong>先上傳你的參考圖</strong>，再貼 prompt<br><span class="hint mini">⚠ prompt 是「對這張圖做什麼」的指令，沒附圖就生不出你的角色</span></li>
         <li>下載它出的 3×3 圖</li>
         <li>回來這裡上傳（可一次選多張湊大套組）</li>
@@ -376,13 +376,13 @@
           <option value="ja">日本語</option>
           <option value="ko">한국어</option>
         </select>
-        <span class="field-hint">同時控制 ✨ AI 產 8 句的語言，以及 AI 把字寫上貼圖時用哪種文字。選「無字模式」時無作用。</span>
+        <span class="field-hint">同時控制 ✨ AI 產 9 句的語言，以及 AI 把字寫上貼圖時用哪種文字。選「無字模式」時無作用。</span>
       </label>
     </div>
 
     <div class="slot-status" id="slot-status">
-      <span class="slot-status-text" id="slot-status-text">🎲 目前：8 格短語全隨機（從內建 50 句抽）</span>
-      <button type="button" class="link-btn" id="open-settings-link">自訂 8 格</button>
+      <span class="slot-status-text" id="slot-status-text">🎲 目前：9 格短語全隨機（從內建 50 句抽）</span>
+      <button type="button" class="link-btn" id="open-settings-link">自訂 9 格</button>
     </div>
 
     <div class="estimate" id="estimate"></div>
@@ -407,15 +407,15 @@
 
   <dialog id="settings-dialog">
     <form method="dialog">
-      <h3>自訂 8 格短語 + 動作</h3>
+      <h3>自訂 9 格短語 + 動作</h3>
       <p class="hint">每格挑一個內建短語、自己打一句、或留「隨機」讓 AI 從 50 句裡抽。<br>
         💡 自訂格可填中文 / 英文 / 日文 / 梗圖台詞 / emoji，最多 30 字 — 風格選「梗圖」或「廢文」會更搭。<br>
         🕺 每格右下「+ 動作」可加英文 pose 描述（例：<code>slumped at desk, weary look</code>），<strong>無字模式必填、不然角色會抽到無關的姿勢</strong>。<br>
-        ✨ 按下「生成 8 句」會用上方主頁面選的「貼圖文字語言」產短語、並同時自動填好對應動作。</p>
+        ✨ 按下「生成 9 句」會用上方主頁面選的「貼圖文字語言」產短語、並同時自動填好對應動作。</p>
       <div class="theme-chips" id="theme-chips" aria-label="主題快速入口"></div>
       <div class="theme-gen-row">
-        <input type="text" id="theme-input" placeholder="✨ 描述你要的主題，AI 幫你想 8 句 + 8 個動作…例：「我家貓」「上班崩潰」「失戀現場」" />
-        <button type="button" class="primary" id="theme-gen-btn">生成 8 句 + 動作</button>
+        <input type="text" id="theme-input" placeholder="✨ 描述你要的主題，AI 幫你想 9 句 + 9 個動作…例：「我家貓」「上班崩潰」「失戀現場」" />
+        <button type="button" class="primary" id="theme-gen-btn">生成 9 句 + 動作</button>
       </div>
       <p class="hint" id="theme-gen-status" hidden></p>
       <div class="slot-grid" id="slot-grid"></div>

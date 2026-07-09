@@ -675,9 +675,9 @@ export default {
       return json({ error: "method not allowed" }, 405, cors);
     }
 
-    // POST /generate-themes — Gemini text model brainstorms 8 themed
-    // sticker phrases from a user description. Used by the slot dialog
-    // "✨ 用 AI 產 8 句" button to fill custom phrases at once.
+    // POST /generate-themes — Gemini text model brainstorms 9 themed
+    // sticker phrases from a user description (one per 3×3 cell). Used by
+    // the slot dialog "✨ 生成 9 句" button to fill custom phrases at once.
     if (url.pathname === "/generate-themes") {
       if (!env.VERTEX_API_KEY && !env.GEMINI_WEB_BASE_URL) {
         return json({ error: "VERTEX_API_KEY or GEMINI_WEB_BASE_URL missing" }, 500, cors);
@@ -700,7 +700,7 @@ export default {
         return json({ error: "description required" }, 400, cors);
       }
       const lang = String(body?.lang || "zh-TW");
-      const prompt = `你是 LINE 貼圖文案 + 動作發想助手。根據使用者描述的主題，產出 8 組「短語 + 對應動作描述」配對。
+      const prompt = `你是 LINE 貼圖文案 + 動作發想助手。根據使用者描述的主題，產出 9 組「短語 + 對應動作描述」配對。
 
 每組包含：
 - "phrase": 2-8 字短語 (語氣口語、聊天感、情緒鮮明、避免廣告或商標)。語言：${lang === "en" ? "English" : lang === "ja" ? "日本語" : lang === "ko" ? "한국어" : "繁體中文"}
@@ -712,7 +712,7 @@ export default {
 [
   {"phrase":"短語1","action":"english action description"},
   {"phrase":"短語2","action":"english action description"},
-  ... × 8
+  ... × 9
 ]`;
       const { url: apiUrl, headers: apiHeaders } = genaiCall(env, "gemini-2.5-flash");
       const payload = {
@@ -742,7 +742,7 @@ export default {
         }
         // Normalise to [{ phrase, action? }] — accept either old string-only
         // shape or the new {phrase, action} object shape.
-        const items = parsed.slice(0, 8).map((entry) => {
+        const items = parsed.slice(0, 9).map((entry) => {
           if (typeof entry === "string") return { phrase: entry.trim() };
           if (entry && typeof entry === "object") {
             const phrase = String(entry.phrase || "").trim();
