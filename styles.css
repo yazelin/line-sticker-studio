@@ -1615,6 +1615,16 @@ body.is-offline .theme-gen-row {
   background: #fbfbfb;
 }
 .tile-text-panel summary { cursor: pointer; }
+.tile-text-panel textarea {
+  width: 100%;
+  margin: 0.45rem 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+}
 .tile-text-panel input[type="text"] {
   width: 100%;
   margin: 0.45rem 0;

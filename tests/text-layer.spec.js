@@ -37,7 +37,12 @@ async function bandOpaque(page, selector, y0Frac, y1Frac) {
 async function openZoom(page, i = 0) {
   await page.locator("#stickers-grid .sticker-cell").nth(i).locator("img").click();
   await expect(page.locator("#tile-dialog")).toBeVisible();
-  await page.locator("#tile-text-panel summary").click();
+  // <details> keeps its open state across dialog sessions — only toggle
+  // when it's actually closed.
+  const panel = page.locator("#tile-text-panel");
+  if (!(await panel.evaluate((el) => el.open))) {
+    await panel.locator("summary").click();
+  }
 }
 
 test("typing text renders it into the tile preview (bottom band)", async ({ page }) => {
@@ -161,6 +166,38 @@ test("invalid font file shows an error and keeps the select intact", async ({ pa
   });
   await expect(page.locator("#text-font-status")).toContainText("失敗");
   await expect(page.locator('#text-font optgroup[label="上傳字型"]')).toHaveCount(0);
+});
+
+test("multi-line text renders a taller block than single line", async ({ page }) => {
+  await openZoom(page);
+  await page.locator("#text-content").fill("嗨");
+  await page.locator("#tile-dialog-close").click();
+  const one = await bandOpaque(page, CELL0_IMG, 0.55, 1.0);
+  await openZoom(page);
+  await page.locator("#text-content").fill("嗨嗨\n你好");
+  await page.locator("#tile-dialog-close").click();
+  const two = await bandOpaque(page, CELL0_IMG, 0.55, 1.0);
+  // Two lines stack upward from the bottom anchor — the band gains the
+  // second line's pixels (minus whatever overlaps the character).
+  expect(two).toBeGreaterThan(one + 2000);
+});
+
+test("rotation redraws the text and warns when the tilt pokes out", async ({ page }) => {
+  await openZoom(page);
+  await page.locator("#text-content").fill("斜斜的");
+  const before = await page.locator("#tile-dialog-img").getAttribute("src");
+  await page.locator("#text-rotate").evaluate((el) => {
+    el.value = "40";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const after = await page.locator("#tile-dialog-img").getAttribute("src");
+  expect(after).not.toBe(before);
+  // A big tilted block anchored at the bottom edge exceeds the safe zone.
+  await page.locator("#text-size").evaluate((el) => {
+    el.value = "60";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator("#tile-safe-guide")).toHaveClass(/violate/);
 });
 
 test("text params persist through reload via the project", async ({ page }) => {

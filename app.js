@@ -1302,6 +1302,7 @@ const TEXT_DEFAULTS = {
   anchor: "hor_bottom",  // preset position; x/y (free drag) overrides
   x: null,               // 0-100 (% of width) — free position
   y: null,
+  rotate: 0,             // degrees, -90..90 — tilted text is cute
   layer: "above",        // "above" | "below" the character
 };
 
@@ -1335,6 +1336,8 @@ function textLayout(tp, w, h) {
 
 function drawTileText(ctx, tp, w, h) {
   const px = Math.max(8, (w * tp.sizePct) / 100);
+  const lines = String(tp.text).split("\n").filter((l, i, a) => l !== "" || i < a.length - 1);
+  if (lines.length === 0) return;
   ctx.save();
   ctx.font = `900 ${px}px ${tp.font}, "Noto Sans TC", sans-serif`;
   ctx.lineJoin = "round";
@@ -1343,24 +1346,39 @@ function drawTileText(ctx, tp, w, h) {
   ctx.strokeStyle = tp.strokeColor;
   ctx.lineWidth = (px * tp.strokePct) / 100;
   const pos = textLayout(tp, w, h);
+  // Rotate the whole text block around its anchor point.
+  ctx.translate(pos.x, pos.y);
+  ctx.rotate(((tp.rotate || 0) * Math.PI) / 180);
   ctx.textAlign = pos.align;
-  ctx.textBaseline = pos.baseline;
   const paint = (str, x, y) => {
     if (ctx.lineWidth > 0.1) ctx.strokeText(str, x, y);
     ctx.fillText(str, x, y);
   };
   if (textIsVertical(tp)) {
-    const chars = Array.from(tp.text);
-    // Vertical stack: fixed per-char line height; baseline handling top-down.
-    let y = pos.y;
-    if (pos.baseline === "bottom") y = pos.y - (chars.length - 1) * px * 1.08;
-    if (pos.baseline === "middle") y = pos.y - ((chars.length - 1) * px * 1.08) / 2;
+    // Each line = one vertical column; columns run right→left (直書慣例),
+    // except ver_tl which grows rightward from the left edge.
+    const colW = px * 1.15;
+    const dir = tp.anchor === "ver_tl" ? 1 : -1;
+    ctx.textAlign = "center";
     ctx.textBaseline = pos.baseline === "bottom" ? "bottom" : (pos.baseline === "middle" ? "middle" : "top");
-    for (let i = 0; i < chars.length; i++) {
-      paint(chars[i], pos.x, y + i * px * 1.08);
-    }
+    lines.forEach((line, li) => {
+      const chars = Array.from(line);
+      const xoff = (tp.x != null)
+        ? (li - (lines.length - 1) / 2) * -colW           // free pos: center the block
+        : li * dir * colW;
+      let yStart = 0;
+      if (pos.baseline === "bottom") yStart = -(chars.length - 1) * px * 1.08;
+      if (pos.baseline === "middle") yStart = -((chars.length - 1) * px * 1.08) / 2;
+      chars.forEach((ch, ci) => paint(ch, xoff, yStart + ci * px * 1.08));
+    });
   } else {
-    paint(tp.text, pos.x, pos.y);
+    const lineH = px * 1.15;
+    const total = (lines.length - 1) * lineH;
+    ctx.textBaseline = pos.baseline;
+    let yStart = 0;
+    if (pos.baseline === "bottom") yStart = -total;
+    if (pos.baseline === "middle") yStart = -total / 2;
+    lines.forEach((line, li) => paint(line, 0, yStart + li * lineH));
   }
   ctx.restore();
 }
@@ -1372,19 +1390,29 @@ function textBounds(tp, w, h) {
   const ctx = c.getContext("2d");
   ctx.font = `900 ${px}px ${tp.font}, "Noto Sans TC", sans-serif`;
   const pos = textLayout(tp, w, h);
+  const lines = String(tp.text).split("\n");
   let tw, th;
   if (textIsVertical(tp)) {
-    tw = px * 1.1;
-    th = Array.from(tp.text).length * px * 1.08;
+    const maxChars = Math.max(...lines.map((l) => Array.from(l).length), 1);
+    tw = lines.length * px * 1.15;
+    th = maxChars * px * 1.08;
   } else {
-    tw = ctx.measureText(tp.text).width;
-    th = px * 1.15;
+    tw = Math.max(...lines.map((l) => ctx.measureText(l).width), 1);
+    th = lines.length * px * 1.15;
   }
-  const halfW = pos.align === "center" ? tw / 2 : tw;
-  let left = pos.align === "left" ? pos.x : pos.align === "right" ? pos.x - tw : pos.x - tw / 2;
-  let top = pos.baseline === "top" ? pos.y : pos.baseline === "bottom" ? pos.y - th : pos.y - th / 2;
+  let left = pos.align === "left" ? 0 : pos.align === "right" ? -tw : -tw / 2;
+  let top = pos.baseline === "top" ? 0 : pos.baseline === "bottom" ? -th : -th / 2;
   const pad = (px * tp.strokePct) / 200;
-  return { left: left - pad, top: top - pad, right: left + tw + pad, bottom: top + th + pad };
+  // Corners relative to the anchor, rotated, then shifted to canvas space.
+  const rad = ((tp.rotate || 0) * Math.PI) / 180;
+  const cosr = Math.cos(rad), sinr = Math.sin(rad);
+  const corners = [
+    [left - pad, top - pad], [left + tw + pad, top - pad],
+    [left - pad, top + th + pad], [left + tw + pad, top + th + pad],
+  ].map(([x, y]) => [pos.x + x * cosr - y * sinr, pos.y + x * sinr + y * cosr]);
+  const xs = corners.map((p) => p[0]);
+  const ys = corners.map((p) => p[1]);
+  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
 }
 
 function composeTile(tile) {
@@ -1946,6 +1974,8 @@ function syncTextPanelFromTile(tile) {
   $("text-content").value = tp.text || "";
   rebuildFontSelect(tp.font);
   $("text-size").value = tp.sizePct;
+  const rot = $("text-rotate");
+  if (rot) rot.value = tp.rotate || 0;
   $("text-stroke").value = tp.strokePct;
   $("text-color").value = tp.color;
   $("text-stroke-color").value = tp.strokeColor;
@@ -1959,6 +1989,8 @@ function syncTextPanelFromTile(tile) {
 $("text-content")?.addEventListener("input", (e) => applyTextInput({ text: e.target.value }));
 $("text-font")?.addEventListener("change", (e) => applyTextInput({ font: e.target.value }));
 $("text-size")?.addEventListener("input", (e) => applyTextInput({ sizePct: Number(e.target.value) }));
+$("text-rotate")?.addEventListener("input", (e) => applyTextInput({ rotate: Number(e.target.value) }));
+$("text-rotate")?.addEventListener("dblclick", (e) => { e.target.value = 0; applyTextInput({ rotate: 0 }); });
 $("text-stroke")?.addEventListener("input", (e) => applyTextInput({ strokePct: Number(e.target.value) }));
 $("text-color")?.addEventListener("input", (e) => applyTextInput({ color: e.target.value }));
 $("text-stroke-color")?.addEventListener("input", (e) => applyTextInput({ strokeColor: e.target.value }));

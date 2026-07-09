@@ -517,7 +517,7 @@
     <details class="tile-text-panel" id="tile-text-panel">
       <summary><strong>✍ 文字圖層（建議搭配無字生圖）</strong></summary>
       <p class="hint mini">改字、換字型、搬位置都在你的瀏覽器完成 — 不重生圖、零 API 成本、任何語言。</p>
-      <input type="text" id="text-content" placeholder="這格要印的字（留空 = 不印字）" maxlength="20" />
+      <textarea id="text-content" placeholder="這格要印的字（留空 = 不印字，Enter = 換行）" maxlength="60" rows="2"></textarea>
       <div class="text-row">
         <select id="text-font" aria-label="字型"></select>
         <button type="button" class="ghost" id="text-local-fonts" hidden>列出本機字型</button>
@@ -528,7 +528,10 @@
       <p class="hint mini" id="text-font-status" hidden></p>
       <div class="text-row">
         <label class="text-mini">大小
-          <input type="range" id="text-size" min="8" max="40" value="18" />
+          <input type="range" id="text-size" min="8" max="60" value="18" />
+        </label>
+        <label class="text-mini">旋轉
+          <input type="range" id="text-rotate" min="-90" max="90" step="1" value="0" title="斜斜的比較可愛；雙擊歸零" />
         </label>
         <label class="text-mini">描邊
           <input type="range" id="text-stroke" min="0" max="30" value="18" />
