@@ -1430,6 +1430,63 @@ body.has-pool #pack-empty { display: none; }
   font-size: 0.82rem;
   padding: 2px 3px;
 }
+.grid-pick-dialog { max-width: min(92vw, 520px); border: none; border-radius: 12px; }
+.grid-pick-cells {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0.5rem 0;
+}
+.grid-pick-cell {
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  background:
+    repeating-conic-gradient(#f2f2f2 0% 25%, #ffffff 0% 50%) 50% / 10px 10px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.grid-pick-cell:hover { border-color: var(--line-green); }
+.grid-pick-cell img { display: block; width: 100%; aspect-ratio: 370/320; object-fit: contain; }
+
+.sticker-lib-card { position: relative; }
+.sticker-check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 17px;
+  height: 17px;
+  accent-color: var(--line-green);
+}
+.sticker-tag-pill {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  background: #5b8def;
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 6px;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sticker-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.3rem 0 0.4rem;
+}
+.sticker-batch-bar select {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
 .pack-source-card.is-finished {
   outline: 2px solid var(--line-green);
   outline-offset: -2px;

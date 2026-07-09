@@ -220,6 +220,12 @@
         <h3>🏁 成品貼圖 <span id="sticker-lib-count" class="muted">(0)</span></h3>
         <span class="hint mini">已編輯定稿（去背＋文字都完成）的單張貼圖 — 按「＋」直接挑進套組打包。在編輯器按「存成成品」就會出現在這。</span>
       </div>
+      <div class="sticker-batch-bar" id="sticker-batch-bar" hidden>
+        <span class="hint mini" id="sticker-batch-count"></span>
+        <select id="sticker-tag-filter" title="依 tag 篩選成品"></select>
+        <button type="button" class="ghost" id="sticker-batch-pool">勾選入池</button>
+        <button type="button" class="ghost" id="sticker-batch-delete">刪除勾選</button>
+      </div>
       <div class="sticker-lib-cards" id="sticker-lib-cards"></div>
     </div>
 
@@ -460,6 +466,13 @@
       <button type="button" class="primary" id="camera-use-btn" hidden>✓ 用這張</button>
     </menu>
     <canvas id="camera-canvas" hidden></canvas>
+  </dialog>
+
+  <dialog id="grid-pick-dialog" class="grid-pick-dialog">
+    <h3>挑一格直接編輯</h3>
+    <p class="hint mini">切好的 9 格 — 點一格進編輯器（去背＋文字＋定稿成成品），不會動到貼圖池。</p>
+    <div class="grid-pick-cells" id="grid-pick-cells"></div>
+    <menu><button type="button" class="ghost" id="grid-pick-close">取消</button></menu>
   </dialog>
 
   <dialog id="tile-dialog" class="tile-dialog">
