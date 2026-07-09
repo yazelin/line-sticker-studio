@@ -121,6 +121,12 @@ function genHistoryId() {
   return `gen_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function shortStamp(ts) {
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function relativeTime(ts) {
   const diff = Date.now() - ts;
   const s = Math.floor(diff / 1000);
@@ -868,7 +874,7 @@ async function generateAll() {
       chromaKey: state.chromaKey,
       phrases: result.phrases,
     });
-    const tiles = await splitGrid(gridImg);
+    const tiles = await splitGrid(gridImg, state.chromaKey);
     // Gemini gives 9 tiles. LINE only accepts 8 per pack, so we show all
     // 9 and pre-select the first 8 — user can swap which one to drop.
     for (let i = 0; i < GRID_SIZE; i++) {
@@ -877,6 +883,7 @@ async function generateAll() {
         included: i < PACK_SIZE,
         srcGridId: state.currentGridId,
         srcIdx: i,
+        srcKey: tiles.key,
       }));
     }
     renderPool();
@@ -1080,12 +1087,13 @@ async function handleGridUploads(fileList) {
       aspectRatio: img.naturalWidth / img.naturalHeight,
       chromaKey: state.chromaKey,
     });
-    const tiles = await splitGrid(img);
+    const tiles = await splitGrid(img); // per-file corner detection
     for (let i = 0; i < tiles.length; i++) {
       state.tiles.push(makeTile(tiles[i], {
         included: false,
         srcGridId: state.currentGridId,
         srcIdx: i,
+        srcKey: tiles.key,
       }));
     }
   }
@@ -1248,12 +1256,13 @@ async function handleGridUpload(file) {
   grid.innerHTML = "";
   for (let i = 0; i < GRID_SIZE; i++) grid.appendChild(buildPlaceholderCell(i));
 
-  const tiles = await splitGrid(img);
+  const tiles = await splitGrid(img, state.chromaKey);
   for (let i = 0; i < GRID_SIZE; i++) {
     state.tiles.push(makeTile(tiles[i], {
       included: i < PACK_SIZE,
       srcGridId: state.currentGridId,
       srcIdx: i,
+      srcKey: tiles.key,
     }));
   }
   renderPool();
@@ -1266,11 +1275,12 @@ async function handleGridUpload(file) {
 // cleaning ALWAYS recomputes from that original (never re-keys an
 // already-keyed result — despill would stack into dirty edges).
 
-function makeTile(canvas, { phrase = "", included = false, srcGridId = null, srcIdx = -1, srcStickerId = null } = {}) {
+function makeTile(canvas, { phrase = "", included = false, srcGridId = null, srcIdx = -1, srcStickerId = null, srcKey = null } = {}) {
   return {
     canvas,                  // current pixels (may be cleaned)
     originalCanvas: canvas,  // pristine split — the only cleanup input
     srcStickerId,            // set when this tile IS a finished sticker
+    srcKey,                  // this grid's own backdrop (green|magenta)
     transparent: false,
     cleanParams: null,       // { key, tune } when cleaned
     textParams: null,        // text overlay (issue #8)
@@ -1435,7 +1445,7 @@ function composeTile(tile) {
 }
 
 async function cleanTile(tile, { key, tune } = {}) {
-  const useKey = normalizeChromaKey(key || state.chromaKey);
+  const useKey = normalizeChromaKey(key || tile.srcKey || state.chromaKey);
   const useTune = tune || bgTuneSelect?.value || "balanced";
   tile.canvas = await bgRemoveWithTextPreserve(tile.originalCanvas, useTune, useKey);
   tile.transparent = true;
@@ -1463,7 +1473,16 @@ function restoreTile(tile) {
 // tile, enough to dodge bleed without losing the character.
 const SPLIT_INSET_RATIO = 0.03;
 
-async function splitGrid(img) {
+async function splitGrid(img, keyName = null) {
+  // Which backdrop does THIS grid use? Explicit metadata wins; otherwise
+  // detect from the corners. The old behavior (whatever the GLOBAL key
+  // happened to be at split time) painted green padding bars onto
+  // magenta grids the moment you pooled them from history.
+  let key = normalizeChromaKey(keyName);
+  if (!keyName) {
+    const det = detectGridKeyColor(img);
+    key = (det === "green" || det === "magenta") ? det : state.chromaKey;
+  }
   const tileW = Math.floor(img.naturalWidth / 3);
   const tileH = Math.floor(img.naturalHeight / 3);
   const insetX = Math.round(tileW * SPLIT_INSET_RATIO);
@@ -1479,7 +1498,7 @@ async function splitGrid(img) {
       // catches the unfilled padding (left/right 25px when contain-fitting
       // a square cell into landscape 370×320). Was: white — which chroma
       // key didn't recognize → showed up as opaque white bars.
-      tctx.fillStyle = chromaKeyColor().hex;
+      tctx.fillStyle = CHROMA_KEYS[key].hex;
       tctx.fillRect(0, 0, STICKER_W, STICKER_H);
 
       // Crop with inset on each side, then contain-fit the cropped
@@ -1497,6 +1516,7 @@ async function splitGrid(img) {
       out.push(tileCanvas);
     }
   }
+  out.key = key; // callers read which backdrop was used
   return out;
 }
 
@@ -1712,7 +1732,7 @@ function openDetachedEditor(tile, title) {
   editorDetachedTitle = title || "素材編輯";
   tileDialogIdx = -1;
   setEditorPoolControlsHidden(true);
-  tileKeySelect.value = tile.cleanParams?.key || state.chromaKey;
+  tileKeySelect.value = tile.cleanParams?.key || tile.srcKey || state.chromaKey;
   tileTuneSelect.value = (typeof tile.cleanParams?.tune === "string" && tile.cleanParams.tune) || "balanced";
   if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
   refreshTileDialog();
@@ -1736,7 +1756,7 @@ function openTileDialog(idx) {
   if (!tile || !tileDialog) return;
   tileDialogIdx = idx;
   // Seed controls from this tile's own params, falling back to globals.
-  tileKeySelect.value = tile.cleanParams?.key || state.chromaKey;
+  tileKeySelect.value = tile.cleanParams?.key || tile.srcKey || state.chromaKey;
   tileTuneSelect.value = tile.cleanParams?.tune || bgTuneSelect?.value || "balanced";
   if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
   refreshTileDialog();
@@ -2286,13 +2306,14 @@ async function appendFromHistory(id) {
   const e = await idbGetGeneration(id);
   if (!e) return;
   const img = await loadImage(URL.createObjectURL(e.gridBlob));
-  const tiles = await splitGrid(img);
+  const tiles = await splitGrid(img, e.metadata?.chromaKey || null);
   for (let i = 0; i < tiles.length; i++) {
     state.tiles.push(makeTile(tiles[i], {
       phrase: e.metadata?.phrases?.[i] || "",
       included: false,
       srcGridId: e.id,
       srcIdx: i,
+      srcKey: tiles.key,
     }));
   }
   $("step-preview").hidden = false;
@@ -2404,7 +2425,7 @@ async function openProject(id) {
     if (slot.stickerId || splits.has(slot.gridId)) continue;
     const e = slot.gridId ? await idbGetGeneration(slot.gridId) : null;
     splits.set(slot.gridId, e
-      ? await splitGrid(await loadImage(URL.createObjectURL(e.gridBlob)))
+      ? await splitGrid(await loadImage(URL.createObjectURL(e.gridBlob)), e.metadata?.chromaKey || null)
       : null);
   }
   const tiles = [];
@@ -2427,6 +2448,7 @@ async function openProject(id) {
       included: slot.included,
       srcGridId: slot.gridId,
       srcIdx: slot.tileIdx,
+      srcKey: split.key,
     });
     t.textParams = slot.textParams || null;
     t._pendingClean = slot.cleanParams || null;
@@ -4353,7 +4375,10 @@ async function openGridPicker(entry) {
   const dlg = $("grid-pick-dialog");
   const wrap = $("grid-pick-cells");
   if (!dlg || !wrap) return;
-  const split = await splitGrid(await loadImage(URL.createObjectURL(entry.gridBlob)));
+  const split = await splitGrid(
+    await loadImage(URL.createObjectURL(entry.gridBlob)),
+    entry.metadata?.chromaKey || null,
+  );
   wrap.innerHTML = "";
   split.forEach((cv, i) => {
     const b = document.createElement("button");
@@ -4369,6 +4394,7 @@ async function openGridPicker(entry) {
         srcGridId: entry.id,
         srcIdx: i,
         phrase: entry.metadata?.phrases?.[i] || "",
+        srcKey: split.key,
       });
       openDetachedEditor(tile, `素材編輯：第 ${i + 1} 格`);
     });
@@ -4424,7 +4450,43 @@ async function renderStickerLibrary() {
     const img = document.createElement("img");
     img.alt = e.name || "finished sticker";
     img.src = URL.createObjectURL(e.pngBlob);
+    img.style.cursor = "zoom-in";
+    img.title = "點我重新編輯（原參數可調）";
+    img.addEventListener("click", async () => {
+      const src = e.srcGridId ? await idbGetGeneration(e.srcGridId) : null;
+      let tile;
+      if (src) {
+        const split = await splitGrid(
+          await loadImage(URL.createObjectURL(src.gridBlob)),
+          e.cleanParams?.key || src.metadata?.chromaKey || null,
+        );
+        const cv = split[e.srcIdx];
+        if (cv) {
+          tile = makeTile(cv, { srcGridId: e.srcGridId, srcIdx: e.srcIdx, srcKey: split.key });
+          tile.textParams = e.textParams ? { ...e.textParams } : null;
+          if (e.cleanParams) await cleanTile(tile, e.cleanParams);
+        }
+      }
+      if (!tile) {
+        tile = makeTile(await stickerToCanvas(e), {});
+        tile.transparent = true;
+        showToast("來源 grid 已不在素材庫 — 以定稿圖為底繼續編輯");
+      }
+      tile.srcStickerId = e.id;
+      openDetachedEditor(tile, `重新編輯：${e.name || "成品"}`);
+    });
     card.appendChild(img);
+    const nameRow = document.createElement("div");
+    nameRow.className = "sticker-lib-name";
+    nameRow.textContent = e.name || `成品 ${shortStamp(e.createdAt || e.updatedAt)}`;
+    nameRow.title = "點我改名";
+    nameRow.addEventListener("click", async () => {
+      const n = prompt("成品名稱：", e.name || "");
+      if (n === null) return;
+      await idbPut("stickers", { ...e, name: n.trim() || null, updatedAt: Date.now() });
+      renderStickerLibrary();
+    });
+    card.appendChild(nameRow);
     const check = document.createElement("input");
     check.type = "checkbox";
     check.className = "sticker-check";
@@ -4453,39 +4515,6 @@ async function renderStickerLibrary() {
       bar.appendChild(b);
     };
     mk("＋", "加入貼圖池", () => queuePoolOp(() => appendFinishedSticker(e.id)));
-    mk("✏️", "重新編輯（原參數）", async () => {
-      const src = e.srcGridId ? await idbGetGeneration(e.srcGridId) : null;
-      let tile;
-      if (src) {
-        const split = await splitGrid(await loadImage(URL.createObjectURL(src.gridBlob)));
-        const cv = split[e.srcIdx];
-        if (cv) {
-          tile = makeTile(cv, { srcGridId: e.srcGridId, srcIdx: e.srcIdx });
-          tile.textParams = e.textParams ? { ...e.textParams } : null;
-          if (e.cleanParams) await cleanTile(tile, e.cleanParams);
-        }
-      }
-      if (!tile) {
-        tile = makeTile(await stickerToCanvas(e), {});
-        tile.transparent = true;
-        showToast("來源 grid 已不在素材庫 — 以定稿圖為底繼續編輯");
-      }
-      tile.srcStickerId = e.id; // 再存 = 更新同一張成品
-      openDetachedEditor(tile, `重新編輯：${e.name || "成品"}`);
-    });
-    mk("📌", "重命名", async () => {
-      const n = prompt("成品名稱：", e.name || "");
-      if (n === null) return;
-      await idbPut("stickers", { ...e, name: n.trim() || null, updatedAt: Date.now() });
-      renderStickerLibrary();
-    });
-    mk("🏷", "設定分類 tag", async () => {
-      const tg = prompt("分類 tag（留空 = 清除）：", e.tag || "");
-      if (tg === null) return;
-      await idbPut("stickers", { ...e, tag: tg.trim() || null, updatedAt: Date.now() });
-      renderStickerLibrary();
-    });
-    mk("⬇", "下載 PNG", () => triggerDownload(e.pngBlob, `${e.name || e.id}.png`));
     mk("🗑", "刪除", async () => {
       const refs = await projectsReferencingSticker(e.id);
       const warn = refs.length
@@ -4601,7 +4630,7 @@ function buildHistoryCard(e) {
   const sourceIcon = e.source === "ai" ? "🪄" : "📤";
   const styleLabel = e.metadata?.styleHint || e.metadata?.fileName ||
     (e.source === "byog" ? "BYOG" : "?");
-  const displayName = e.name || `${e.source === "ai" ? "AI" : "BYOG"} #${e.id.slice(-4)}`;
+  const displayName = e.name || `${e.source === "ai" ? "AI" : "BYOG"} ${shortStamp(e.timestamp)}`;
   card.innerHTML = `
     <div class="history-card-badges">${sourceIcon}${e.starred ? " ⭐" : ""}</div>
     <img alt="" />
@@ -4611,8 +4640,6 @@ function buildHistoryCard(e) {
       <button class="act-load" title="載入（取代目前貼圖池）">↻</button>
       <button class="act-add" title="加入貼圖池（湊 16/24/32/40 張大套組）">＋</button>
       <button class="act-star" title="${e.starred ? "取消收藏" : "收藏"}">${e.starred ? "⭐" : "☆"}</button>
-      <button class="act-rename" title="重命名">📌</button>
-      <button class="act-download" title="下載">⬇</button>
       <button class="act-delete" title="刪除">🗑</button>
     </div>`;
   const cardImg = card.querySelector("img");
@@ -4620,22 +4647,22 @@ function buildHistoryCard(e) {
   cardImg.style.cursor = "zoom-in";
   cardImg.title = "點我挑一格直接編輯（不動貼圖池）";
   cardImg.addEventListener("click", () => openGridPicker(e));
+  const nameEl = card.querySelector(".history-card-name");
+  nameEl.style.cursor = "text";
+  nameEl.title = "點我改名";
+  nameEl.onclick = async () => {
+    const n = prompt("素材名稱：", e.name || "");
+    if (n === null) return;
+    await idbUpdateGeneration(e.id, { name: n.trim() || null });
+    if (state.currentGridId === e.id) await renderCurrentGridUi();
+    await renderHistoryUi();
+  };
   card.querySelector(".act-load").onclick = () => queuePoolOp(() => loadFromHistory(e.id));
   card.querySelector(".act-add").onclick = () => queuePoolOp(() => appendFromHistory(e.id));
   card.querySelector(".act-star").onclick = async () => {
     await idbUpdateGeneration(e.id, { starred: !e.starred });
     if (state.currentGridId === e.id) await renderCurrentGridUi();
     await renderHistoryUi();
-  };
-  card.querySelector(".act-rename").onclick = async () => {
-    const n = prompt("重新命名（留空 = 取消命名）:", e.name || "");
-    if (n === null) return;
-    await idbUpdateGeneration(e.id, { name: n.trim() || null });
-    if (state.currentGridId === e.id) await renderCurrentGridUi();
-    await renderHistoryUi();
-  };
-  card.querySelector(".act-download").onclick = () => {
-    triggerDownload(e.gridBlob, `grid-${e.name ? e.name.replace(/\W+/g, "_") : e.id}.png`);
   };
   card.querySelector(".act-delete").onclick = async () => {
     const refs = await projectsReferencingGrid(e.id);
@@ -4721,7 +4748,7 @@ async function loadFromHistory(id) {
   if (e.metadata?.withText !== undefined) state.withText = e.metadata.withText;
   setChromaKey(e.metadata?.chromaKey || "green");
   const img = await loadImage(URL.createObjectURL(e.gridBlob));
-  const tiles = await splitGrid(img);
+  const tiles = await splitGrid(img, e.metadata?.chromaKey || null);
   $("step-preview").hidden = false;
   const grid = $("stickers-grid");
   grid.innerHTML = "";
@@ -4732,6 +4759,7 @@ async function loadFromHistory(id) {
       included: i < PACK_SIZE,
       srcGridId: e.id,
       srcIdx: i,
+      srcKey: tiles.key,
     }));
   }
   renderPool();
@@ -4768,6 +4796,17 @@ $("sticker-batch-pool")?.addEventListener("click", () => {
     for (const id of ids) await appendFinishedSticker(id);
   });
   stickerSelection.clear();
+  renderStickerLibrary();
+});
+$("sticker-batch-tag")?.addEventListener("click", async () => {
+  const ids = [...stickerSelection];
+  if (ids.length === 0) { showToast("先勾選幾張成品"); return; }
+  const tg = prompt(`為勾選的 ${ids.length} 張設定 tag（留空 = 清除）：`, "");
+  if (tg === null) return;
+  for (const id of ids) {
+    const e = await idbGetFrom("stickers", id);
+    if (e) await idbPut("stickers", { ...e, tag: tg.trim() || null, updatedAt: Date.now() });
+  }
   renderStickerLibrary();
 });
 $("sticker-batch-delete")?.addEventListener("click", async () => {

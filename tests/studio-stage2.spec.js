@@ -44,7 +44,7 @@ test("finished sticker re-edits at parameter level and updates in place", async 
 
   await page.locator('.studio-tab[data-tab="assets"]').click();
   const srcBefore = await page.locator(".sticker-lib-card img").getAttribute("src");
-  await page.locator(".sticker-lib-bar button", { hasText: "✏️" }).click();
+  await page.locator(".sticker-lib-card img").click(); // 縮圖 = 重新編輯
   await expect(page.locator("#tile-dialog")).toBeVisible();
   // Params came back, not baked pixels: status shows cleaned, textarea has text.
   await expect(page.locator("#tile-dialog-status")).toContainText("已去背");
@@ -86,9 +86,10 @@ test("batch select pools both; tag filter narrows the library", async ({ page })
   }
   await expect(page.locator(".sticker-lib-card")).toHaveCount(2);
 
-  // Tag the first card, then filter by it.
+  // Tag the first card via batch flow, then filter by it.
   page.on("dialog", (d) => d.accept("貓"));
-  await page.locator(".sticker-lib-card").nth(0).locator("button", { hasText: "🏷" }).click();
+  await page.locator(".sticker-lib-card").nth(0).locator(".sticker-check").check();
+  await page.locator("#sticker-batch-tag").click();
   await expect(page.locator(".sticker-tag-pill")).toHaveCount(1);
   await page.locator("#sticker-tag-filter").selectOption("貓");
   await expect(page.locator(".sticker-lib-card")).toHaveCount(1);

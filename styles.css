@@ -331,6 +331,7 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.history-card-actions { flex-wrap: wrap; }
 .history-card-actions {
   display: flex;
   gap: 2px;
@@ -1416,6 +1417,16 @@ body.has-pool #pack-empty { display: none; }
   aspect-ratio: 370 / 320;
   object-fit: contain;
 }
+.sticker-lib-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+  background: #fafafa;
+}
 .sticker-lib-bar {
   display: flex;
   justify-content: space-between;
@@ -1555,11 +1566,18 @@ body.has-pool #pack-empty { display: none; }
   bottom: 2px;
   width: 22px;
   height: 22px;
+  min-width: 22px;
+  padding: 0;
   border: none;
   border-radius: 50%;
   background: var(--line-green);
   color: #fff;
   font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
@@ -1703,12 +1721,10 @@ body.is-offline .theme-gen-row {
   .tile-dialog-right { max-height: none; overflow: visible; }
 }
 .tile-dialog-x {
-  position: absolute;
-  top: -0.35rem;
-  right: -0.35rem;
-  z-index: 5;
+  flex: 0 0 auto;
   width: 34px;
   height: 34px;
+  padding: 0;
   border: none;
   border-radius: 50%;
   background: #f0f0f0;
