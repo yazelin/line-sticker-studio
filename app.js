@@ -13,12 +13,12 @@ const $ = (id) => document.getElementById(id);
 // unlimited starred.
 // ==================================================================
 const IDB_NAME = "line-sticker-history";
-// v2 (2026-07-09): projects / fonts / prompts / phraseSets / styles —
-// all studio stores created in one bump so later features don't need
-// another migration.
-const IDB_VERSION = 2;
+// v2 (2026-07-09): projects / fonts / prompts / phraseSets / styles.
+// v3 (2026-07-09): stickers — FINISHED single stickers (cleaned + text
+// baked into a 370×320 transparent PNG), the studio's中段產出物.
+const IDB_VERSION = 3;
 const IDB_STORE = "generations";
-const IDB_EXTRA_STORES = ["projects", "fonts", "prompts", "phraseSets", "styles"];
+const IDB_EXTRA_STORES = ["projects", "fonts", "prompts", "phraseSets", "styles", "stickers"];
 const HISTORY_NONSTARRED_CAP = 30;
 
 let _idbPromise = null;
@@ -1267,10 +1267,11 @@ async function handleGridUpload(file) {
 // cleaning ALWAYS recomputes from that original (never re-keys an
 // already-keyed result — despill would stack into dirty edges).
 
-function makeTile(canvas, { phrase = "", included = false, srcGridId = null, srcIdx = -1 } = {}) {
+function makeTile(canvas, { phrase = "", included = false, srcGridId = null, srcIdx = -1, srcStickerId = null } = {}) {
   return {
     canvas,                  // current pixels (may be cleaned)
     originalCanvas: canvas,  // pristine split — the only cleanup input
+    srcStickerId,            // set when this tile IS a finished sticker
     transparent: false,
     cleanParams: null,       // { key, tune } when cleaned
     textParams: null,        // text overlay (issue #8)
@@ -1822,6 +1823,27 @@ tileDialog?.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") { e.preventDefault(); navTile(-1); }
   if (e.key === "ArrowRight") { e.preventDefault(); navTile(1); }
 });
+$("tile-save-sticker-btn")?.addEventListener("click", async () => {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile) return;
+  const blob = await canvasToBlob(composeTile(tile), "image/png");
+  const id = tile.srcStickerId || `stk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  await idbPut("stickers", {
+    id,
+    name: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    srcGridId: tile.srcGridId,
+    srcIdx: tile.srcIdx,
+    cleanParams: tile.cleanParams || null,
+    textParams: tile.textParams || null,
+    pngBlob: blob,
+  });
+  await renderStickerLibrary();
+  await renderHistoryUi();
+  showToast("✓ 已定稿存入素材庫「成品貼圖」— 隨時可挑進任何套組");
+});
+
 $("tile-include-btn")?.addEventListener("click", () => {
   toggleIncluded(tileDialogIdx);
   refreshTileDialog();
@@ -2251,13 +2273,15 @@ function serializeProject() {
     id: state.projectId,
     name: state.projectName,
     packSize: state.packSize,
-    slots: state.tiles.map((t) => ({
-      gridId: t.srcGridId,
-      tileIdx: t.srcIdx,
-      included: t.included,
-      cleanParams: t.cleanParams || null,
-      textParams: t.textParams || null,
-    })),
+    slots: state.tiles.map((t) => (t.srcStickerId
+      ? { stickerId: t.srcStickerId, included: t.included }
+      : {
+          gridId: t.srcGridId,
+          tileIdx: t.srcIdx,
+          included: t.included,
+          cleanParams: t.cleanParams || null,
+          textParams: t.textParams || null,
+        })),
     mainSlot: state.tiles.indexOf(state.mainTile),
     tabSlot: state.tiles.indexOf(state.tabTile),
     createdAt: state.projectCreatedAt || Date.now(),
@@ -2274,7 +2298,7 @@ function scheduleProjectSave() {
 
 async function saveProjectNow() {
   if (state.tiles.length === 0) return;
-  if (state.tiles.some((t) => !t.srcGridId)) return; // no provenance → skip
+  if (state.tiles.some((t) => !t.srcGridId && !t.srcStickerId)) return; // no provenance → skip
   if (!state.projectId) {
     state.projectId = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     state.projectCreatedAt = Date.now();
@@ -2302,7 +2326,7 @@ async function openProject(id) {
   // Load each referenced grid once, split, then rebuild slots in order.
   const splits = new Map();
   for (const slot of p.slots) {
-    if (splits.has(slot.gridId)) continue;
+    if (slot.stickerId || splits.has(slot.gridId)) continue;
     const e = slot.gridId ? await idbGetGeneration(slot.gridId) : null;
     splits.set(slot.gridId, e
       ? await splitGrid(await loadImage(URL.createObjectURL(e.gridBlob)))
@@ -2311,6 +2335,17 @@ async function openProject(id) {
   const tiles = [];
   let dropped = 0;
   for (const slot of p.slots) {
+    if (slot.stickerId) {
+      const entry = await idbGetFrom("stickers", slot.stickerId).catch(() => null);
+      if (!entry) { dropped++; continue; }
+      const t = makeTile(await stickerToCanvas(entry), {
+        included: slot.included,
+        srcStickerId: slot.stickerId,
+      });
+      t.transparent = true;
+      tiles.push(t);
+      continue;
+    }
     const split = splits.get(slot.gridId);
     if (!split || !split[slot.tileIdx]) { dropped++; continue; }
     const t = makeTile(split[slot.tileIdx], {
@@ -4003,6 +4038,7 @@ async function exportVault() {
     prompts: await idbAllFrom("prompts"),
     phraseSets: await idbAllFrom("phraseSets"),
     styles: await idbAllFrom("styles"),
+    stickers: [],
     fonts: [],
   };
   for (const e of generations) {
@@ -4021,6 +4057,13 @@ async function exportVault() {
       zip.file(`fonts/${f.name}.bin`, f.blob);
     }
   } catch { /* fonts store empty */ }
+  try {
+    for (const st of await idbAllFrom("stickers")) {
+      const { pngBlob, ...meta } = st;
+      manifest.stickers.push({ ...meta, file: `stickers/${st.id}.png` });
+      zip.file(`stickers/${st.id}.png`, pngBlob);
+    }
+  } catch { /* stickers store empty */ }
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
   const blob = await zip.generateAsync({ type: "blob" });
   const stamp = new Date().toISOString().slice(0, 10);
@@ -4076,6 +4119,15 @@ async function importVault(file) {
       counts.library++;
     }
   }
+  for (const st of manifest.stickers || []) {
+    if (await idbGetFrom("stickers", st.id)) { counts.skipped++; continue; }
+    const entry = zip.file(st.file);
+    if (!entry) continue;
+    const pngBlob = new Blob([await entry.async("arraybuffer")], { type: "image/png" });
+    const { file, ...meta } = st;
+    await idbPut("stickers", { ...meta, pngBlob });
+    counts.grids++;
+  }
   for (const f of manifest.fonts || []) {
     if (await idbGetFrom("fonts", f.name)) { counts.skipped++; continue; }
     const entry = zip.file(f.file);
@@ -4088,6 +4140,7 @@ async function importVault(file) {
 
   await renderHistoryUi();
   await renderCurrentGridUi();
+  await renderStickerLibrary();
   await renderProjectBar();
   await renderPromptHistory();
   await renderPhraseSetSelect();
@@ -4196,6 +4249,89 @@ async function pruneHistory() {
     showToast(`📌 已自動清除最舊歷史 (達 ${HISTORY_NONSTARRED_CAP} 筆上限)`);
   }
 }
+// --- Finished stickers (成品) — the studio's中段 asset (issue: 工作室分段) ---
+
+async function stickerToCanvas(entry) {
+  const img = await loadImage(URL.createObjectURL(entry.pngBlob));
+  const c = document.createElement("canvas");
+  c.width = STICKER_W;
+  c.height = STICKER_H;
+  c.getContext("2d").drawImage(img, 0, 0, STICKER_W, STICKER_H);
+  return c;
+}
+
+async function appendFinishedSticker(id) {
+  const entry = await idbGetFrom("stickers", id);
+  if (!entry) return;
+  const tile = makeTile(await stickerToCanvas(entry), {
+    included: false,
+    srcStickerId: id,
+  });
+  tile.transparent = true; // baked PNG is already final
+  state.tiles.push(tile);
+  $("step-preview").hidden = false;
+  $("step-download").hidden = false;
+  renderPool();
+  showToast(`已加入成品貼圖（貼圖池共 ${state.tiles.length} 格）`);
+  switchTab("pack");
+}
+
+async function projectsReferencingSticker(stickerId) {
+  const all = await idbAllFrom("projects");
+  return all.filter((p) => p.slots.some((sl) => sl.stickerId === stickerId));
+}
+
+async function renderStickerLibrary() {
+  const wrap = $("sticker-lib-cards");
+  const section = $("sticker-lib-section");
+  if (!wrap || !section) return;
+  let all = [];
+  try { all = await idbAllFrom("stickers"); } catch { /* pre-v3 */ }
+  all.sort((a, b) => b.updatedAt - a.updatedAt);
+  section.hidden = all.length === 0;
+  $("sticker-lib-count").textContent = `(${all.length})`;
+  wrap.innerHTML = "";
+  for (const e of all) {
+    const card = document.createElement("div");
+    card.className = "sticker-lib-card";
+    card.title = e.name || "成品貼圖";
+    const img = document.createElement("img");
+    img.alt = e.name || "finished sticker";
+    img.src = URL.createObjectURL(e.pngBlob);
+    card.appendChild(img);
+    const bar = document.createElement("div");
+    bar.className = "sticker-lib-bar";
+    const mk = (label, title, fn) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener("click", fn);
+      bar.appendChild(b);
+    };
+    mk("＋", "加入貼圖池", () => queuePoolOp(() => appendFinishedSticker(e.id)));
+    mk("📌", "重命名", async () => {
+      const n = prompt("成品名稱：", e.name || "");
+      if (n === null) return;
+      await idbPut("stickers", { ...e, name: n.trim() || null, updatedAt: Date.now() });
+      renderStickerLibrary();
+    });
+    mk("⬇", "下載 PNG", () => triggerDownload(e.pngBlob, `${e.name || e.id}.png`));
+    mk("🗑", "刪除", async () => {
+      const refs = await projectsReferencingSticker(e.id);
+      const warn = refs.length
+        ? `有 ${refs.length} 個專案（${refs.map((p) => p.name || p.id).join("、")}）用到這張成品，刪除後那些格子將無法還原。\n\n仍要刪除？`
+        : "刪除這張成品貼圖?";
+      if (!confirm(warn)) return;
+      await idbDelFrom("stickers", e.id);
+      renderStickerLibrary();
+      renderHistoryUi();
+    });
+    card.appendChild(bar);
+    wrap.appendChild(card);
+  }
+}
+
 let assetsFilter = "all";
 
 function assetsFilterMatch(e) {
@@ -4223,13 +4359,32 @@ async function updateStorageUsage() {
   } catch { /* ignore */ }
 }
 
-function renderPackSources(all) {
+async function renderPackSources(all) {
   const wrap = $("pack-sources");
   const cards = $("pack-source-cards");
   if (!wrap || !cards) return;
   cards.innerHTML = "";
-  if (all.length === 0) { wrap.hidden = true; return; }
+  let finished = [];
+  try { finished = (await idbAllFrom("stickers")).sort((a, b) => b.updatedAt - a.updatedAt); } catch { /* pre-v3 */ }
+  if (all.length === 0 && finished.length === 0) { wrap.hidden = true; return; }
   wrap.hidden = false;
+  for (const e of finished.slice(0, 12)) {
+    const card = document.createElement("div");
+    card.className = "pack-source-card is-finished";
+    card.title = `成品：${e.name || e.id}`;
+    const img = document.createElement("img");
+    img.alt = "";
+    img.src = URL.createObjectURL(e.pngBlob);
+    card.appendChild(img);
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "act-add";
+    add.textContent = "＋";
+    add.title = "把這張成品加入貼圖池";
+    add.addEventListener("click", () => queuePoolOp(() => appendFinishedSticker(e.id)));
+    card.appendChild(add);
+    cards.appendChild(card);
+  }
   for (const e of all.slice(0, 12)) {
     const card = document.createElement("div");
     card.className = "pack-source-card";
@@ -4482,6 +4637,7 @@ ensurePoolLoaded();
 // Eager-load grid history (will show 🅱 carousel + last loaded grid).
 renderCurrentGridUi();
 renderHistoryUi();
+renderStickerLibrary();
 // Restore the last active project (multi-project, issue #25).
 queuePoolOp(() => restoreLastProject());
 // Re-register uploaded fonts (issue #8).

@@ -215,6 +215,14 @@
       <span class="hint mini" id="storage-usage"></span>
     </div>
 
+    <div id="sticker-lib-section" hidden>
+      <div class="history-header">
+        <h3>🏁 成品貼圖 <span id="sticker-lib-count" class="muted">(0)</span></h3>
+        <span class="hint mini">已編輯定稿（去背＋文字都完成）的單張貼圖 — 按「＋」直接挑進套組打包。在編輯器按「存成成品」就會出現在這。</span>
+      </div>
+      <div class="sticker-lib-cards" id="sticker-lib-cards"></div>
+    </div>
+
     <!-- Current grid preview area (hidden until something loaded) -->
     <div id="current-grid-area" hidden>
       <div class="current-grid-meta">
@@ -482,6 +490,7 @@
           <button type="button" class="ghost" id="tile-reroll-btn" hidden title="用 AI 重抽這一格（耗 1 次呼叫）">重抽</button>
         </div>
         <menu class="tile-dialog-menu">
+          <button type="button" class="primary" id="tile-save-sticker-btn" title="把目前狀態（去背＋文字）定稿成一張成品貼圖，存進素材庫，之後任何套組都能直接挑用">存成成品</button>
           <button type="button" class="ghost" id="tile-dialog-close">關閉</button>
           <button type="button" class="ghost" id="tile-single-dl-btn">
             <svg class="btn-icon"><use href="#i-download"/></svg>
