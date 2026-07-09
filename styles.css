@@ -1668,6 +1668,22 @@ body.is-offline .theme-gen-row {
   background: var(--line-green-soft);
 }
 
+/* Camera dialog — align with the editor's visual language */
+.camera-dialog {
+  border: none;
+  border-radius: var(--radius-sm, 12px);
+  padding: 1rem 1.1rem;
+  width: min(92vw, 560px);
+}
+.camera-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+.camera-dialog h3 { margin-top: 0; }
+.camera-stage {
+  border-radius: 10px;
+  overflow: hidden;
+  background: #111;
+}
+.camera-stage video, .camera-stage img { display: block; width: 100%; }
+
 /* --- Tile zoom dialog (issue #6) --- */
 
 .tile-dialog {
@@ -1699,6 +1715,9 @@ body.is-offline .theme-gen-row {
 .editor-nav h3 { margin: 0; white-space: nowrap; }
 .editor-nav button { min-width: 40px; font-weight: 800; }
 .editor-include { margin-left: auto; white-space: nowrap; }
+.editor-history { display: flex; gap: 0.3rem; }
+.editor-history button { min-width: 34px; }
+.editor-history button:disabled { opacity: 0.35; }
 .editor-include.off { opacity: 0.55; }
 
 /* Two-pane editor: preview stays put, tools scroll independently. */
@@ -1824,6 +1843,10 @@ body.is-offline .theme-gen-row {
   margin: 0.6rem 0 0.2rem;
 }
 
+.icon-14 { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; }
+.icon-12 { width: 12px; height: 12px; display: inline-block; vertical-align: -1px; }
+.history-card-actions svg, .sticker-lib-bar svg { pointer-events: none; }
+
 /* --- Library (issue #27) --- */
 
 .prompt-history-list { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
@@ -1936,7 +1959,7 @@ body.is-offline .theme-gen-row {
   font-size: 0.85rem;
   font-weight: 700;
 }
-.pack-size-chips { display: flex; gap: 0.35rem; }
+.pack-size-chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .pack-size-chip {
   min-width: 42px;
   padding: 0.32rem 0.6rem;
@@ -1996,11 +2019,13 @@ body.is-offline .theme-gen-row {
 
 
 .selection-status {
-  margin: 0.25rem 0 0.85rem;
-  padding: 0.55rem 0.85rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.88rem;
-  font-weight: 600;
+  flex: 1;
+  min-width: 200px;
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
   text-align: center;
 }
 .selection-status.ready { background: var(--line-green-soft); color: var(--line-green-hover); }
