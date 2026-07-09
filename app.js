@@ -1683,8 +1683,56 @@ const tileTuneSelect = $("tile-tune-select");
 const tileCleanBtn = $("tile-clean-btn");
 const tileRestoreBtn = $("tile-restore-btn");
 let tileDialogIdx = -1;
+// Detached mode (issue: 素材庫直通編輯器 / 成品 re-edit): the editor works
+// on a tile that is NOT in the pool. Pool-only controls hide themselves.
+let editorDetachedTile = null;
+let editorDetachedTitle = "";
+
+function editorTile() {
+  return editorDetachedTile || state.tiles[tileDialogIdx];
+}
+function editorInPool() {
+  return editorDetachedTile === null;
+}
+function refreshEditorCell() {
+  if (editorInPool() && editorTile()) {
+    renderTileIntoCell(tileDialogIdx, editorTile());
+  }
+}
+function setEditorPoolControlsHidden(hidden) {
+  for (const id of ["tile-prev", "tile-next", "tile-include-btn",
+    "tile-set-main-btn", "tile-set-tab-btn"]) {
+    const el = $(id);
+    if (el) el.hidden = hidden;
+  }
+  if (hidden) { const r = $("tile-reroll-btn"); if (r) r.hidden = true; }
+}
+
+function openDetachedEditor(tile, title) {
+  editorDetachedTile = tile;
+  editorDetachedTitle = title || "素材編輯";
+  tileDialogIdx = -1;
+  setEditorPoolControlsHidden(true);
+  tileKeySelect.value = tile.cleanParams?.key || state.chromaKey;
+  tileTuneSelect.value = (typeof tile.cleanParams?.tune === "string" && tile.cleanParams.tune) || "balanced";
+  if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
+  refreshTileDialog();
+  syncTextPanelFromTile(tile);
+  syncAdvSliders(tile);
+  refreshTextMarginWarn(tile);
+  if (!tileDialog.open) tileDialog.showModal();
+}
+
+tileDialog?.addEventListener("close", () => {
+  editorDetachedTile = null;
+  editorDetachedTitle = "";
+  setEditorPoolControlsHidden(false);
+});
 
 function openTileDialog(idx) {
+  editorDetachedTile = null;
+  editorDetachedTitle = "";
+  setEditorPoolControlsHidden(false);
   const tile = state.tiles[idx];
   if (!tile || !tileDialog) return;
   tileDialogIdx = idx;
@@ -1700,11 +1748,12 @@ function openTileDialog(idx) {
 }
 
 function refreshTileDialog() {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile) return;
   tileDialogImg.src = tileDataUrl(tile);
-  tileDialogTitle.textContent =
-    `第 ${String(tileDialogIdx + 1).padStart(2, "0")} / ${String(state.tiles.length).padStart(2, "0")} 張`;
+  tileDialogTitle.textContent = editorInPool()
+    ? `第 ${String(tileDialogIdx + 1).padStart(2, "0")} / ${String(state.tiles.length).padStart(2, "0")} 張`
+    : editorDetachedTitle;
   const incBtn = $("tile-include-btn");
   if (incBtn) {
     incBtn.textContent = tile.included ? "✓ 已選入" : "✗ 未選入";
@@ -1726,7 +1775,7 @@ function refreshTileDialog() {
 }
 
 tileCleanBtn?.addEventListener("click", async () => {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile || tile.busy) return;
   tile.busy = true;
   tileCleanBtn.disabled = true;
@@ -1735,7 +1784,7 @@ tileCleanBtn?.addEventListener("click", async () => {
       key: tileKeySelect.value,
       tune: tileTuneSelect.value,
     });
-    renderPool();
+    if (editorInPool()) renderPool();
     refreshTileDialog();
   } finally {
     tile.busy = false;
@@ -1744,10 +1793,10 @@ tileCleanBtn?.addEventListener("click", async () => {
 });
 
 tileRestoreBtn?.addEventListener("click", () => {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile) return;
   restoreTile(tile);
-  renderPool();
+  if (editorInPool()) renderPool();
   refreshTileDialog();
 });
 
@@ -1780,12 +1829,12 @@ let _advTimer = null;
 function scheduleAdvApply() {
   clearTimeout(_advTimer);
   _advTimer = setTimeout(async () => {
-    const tile = state.tiles[tileDialogIdx];
+    const tile = editorTile();
     if (!tile || tile.busy) return;
     tile.busy = true;
     try {
       await cleanTile(tile, { key: tileKeySelect.value, tune: advProfileFromSliders() });
-      renderPool();
+      if (editorInPool()) renderPool();
       refreshTileDialog();
     } finally {
       tile.busy = false;
@@ -1796,7 +1845,7 @@ for (const [id] of ADV_FIELDS) {
   $(id)?.addEventListener("input", scheduleAdvApply);
 }
 $("tile-adv-reset")?.addEventListener("click", () => {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile) return;
   // Back to the preset profile of the current strength dropdown.
   tile.cleanParams = null;
@@ -1809,7 +1858,7 @@ $("tile-dialog-x")?.addEventListener("click", () => tileDialog.close());
 
 // --- Editor navigation: flip through the whole pool without closing ---
 function navTile(delta) {
-  if (state.tiles.length === 0) return;
+  if (!editorInPool() || state.tiles.length === 0) return;
   const n = state.tiles.length;
   openTileDialog((tileDialogIdx + delta + n) % n);
 }
@@ -1824,9 +1873,18 @@ tileDialog?.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") { e.preventDefault(); navTile(1); }
 });
 $("tile-save-sticker-btn")?.addEventListener("click", async () => {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile) return;
-  const blob = await canvasToBlob(composeTile(tile), "image/png");
+  const composed = composeTile(tile);
+  // 定稿守門:背景沒去乾淨的成品 = 未來每個套組的退件地雷。
+  if (tileBackgroundNotRemoved(composed)) {
+    const ok = confirm(
+      "⚠ 這張的背景疑似還沒去乾淨（LINE 上架會被退件）。\n\n" +
+      "→ 確定：仍要定稿成成品\n→ 取消：先去背再定稿",
+    );
+    if (!ok) return;
+  }
+  const blob = await canvasToBlob(composed, "image/png");
   const id = tile.srcStickerId || `stk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   await idbPut("stickers", {
     id,
@@ -1855,13 +1913,13 @@ tileDialog?.addEventListener("click", (e) => {
   if (e.target === tileDialog) tileDialog.close();
 });
 $("tile-set-main-btn")?.addEventListener("click", () => {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile) return;
   setMainTile(tile);
   refreshTileDialog();
 });
 $("tile-set-tab-btn")?.addEventListener("click", () => {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile) return;
   setTabTile(tile);
   refreshTileDialog();
@@ -1961,19 +2019,19 @@ $("text-local-fonts")?.addEventListener("click", async () => {
 // Apply a partial patch to the CURRENT dialog tile's text params, then
 // refresh that one cell + the dialog preview + autosave.
 function applyTextInput(patch) {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (!tile) return;
   const tp = ensureTextParams(tile);
   Object.assign(tp, patch);
   tile._url = null;
-  renderTileIntoCell(tileDialogIdx, tile);
+  refreshEditorCell();
   refreshTileDialogPreviewOnly();
   refreshTextMarginWarn(tile);
   scheduleProjectSave();
 }
 
 function refreshTileDialogPreviewOnly() {
-  const tile = state.tiles[tileDialogIdx];
+  const tile = editorTile();
   if (tile) tileDialogImg.src = tileDataUrl(tile);
 }
 
@@ -2014,9 +2072,9 @@ function refreshTextMarginWarn(tile) {
   warn.hidden = !out;
   guide?.classList.toggle("violate", out);
 }
-tileDialogImg?.addEventListener("load", () => updateSafeGuide(state.tiles[tileDialogIdx]));
+tileDialogImg?.addEventListener("load", () => updateSafeGuide(editorTile()));
 window.addEventListener("resize", () => {
-  if (tileDialog?.open) updateSafeGuide(state.tiles[tileDialogIdx]);
+  if (tileDialog?.open) updateSafeGuide(editorTile());
 });
 
 function syncTextPanelFromTile(tile) {
@@ -2070,7 +2128,7 @@ document.querySelectorAll("#text-anchors button").forEach((b) =>
   // text stops following. Click-to-place still works; drag now stays ours.
   img.addEventListener("dragstart", (ev) => ev.preventDefault());
   img.addEventListener("pointerdown", (ev) => {
-    const tile = state.tiles[tileDialogIdx];
+    const tile = editorTile();
     if (!tile?.textParams?.text) return;
     ev.preventDefault();
     dragging = true;
@@ -2089,9 +2147,27 @@ document.querySelectorAll("#text-anchors button").forEach((b) =>
   img.addEventListener("pointerup", stop);
   img.addEventListener("pointercancel", stop);
 })();
-$("tile-single-dl-btn")?.addEventListener("click", () => downloadSingleTile(tileDialogIdx));
+$("tile-single-dl-btn")?.addEventListener("click", async () => {
+  const tile = editorTile();
+  if (!tile) return;
+  const blob = await canvasToBlob(composeTile(tile), "image/png");
+  triggerDownload(blob, `sticker-${editorInPool() ? String(tileDialogIdx + 1).padStart(2, "0") : "edit"}.png`);
+});
 const tileShareBtn = $("tile-share-btn");
-tileShareBtn?.addEventListener("click", () => shareSingleTile(tileDialogIdx));
+tileShareBtn?.addEventListener("click", async () => {
+  const tile = editorTile();
+  if (!tile) return;
+  const blob = await canvasToBlob(composeTile(tile), "image/png");
+  const name = editorInPool()
+    ? `sticker-${String(tileDialogIdx + 1).padStart(2, "0")}.png`
+    : "sticker-edit.png";
+  const file = new File([blob], name, { type: "image/png" });
+  if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; }
+    catch (err) { if (err?.name === "AbortError") return; }
+  }
+  triggerDownload(blob, file.name);
+});
 
 function toggleIncluded(idx) {
   const tile = state.tiles[idx];
@@ -4281,6 +4357,50 @@ async function projectsReferencingSticker(stickerId) {
   return all.filter((p) => p.slots.some((sl) => sl.stickerId === stickerId));
 }
 
+// Pick ONE cell of a raw grid to edit directly (素材庫 → 編輯器,不經池).
+async function openGridPicker(entry) {
+  const dlg = $("grid-pick-dialog");
+  const wrap = $("grid-pick-cells");
+  if (!dlg || !wrap) return;
+  const split = await splitGrid(await loadImage(URL.createObjectURL(entry.gridBlob)));
+  wrap.innerHTML = "";
+  split.forEach((cv, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "grid-pick-cell";
+    const im = document.createElement("img");
+    im.src = cv.toDataURL("image/png");
+    im.alt = `格 ${i + 1}`;
+    b.appendChild(im);
+    b.addEventListener("click", () => {
+      dlg.close();
+      const tile = makeTile(cv, {
+        srcGridId: entry.id,
+        srcIdx: i,
+        phrase: entry.metadata?.phrases?.[i] || "",
+      });
+      openDetachedEditor(tile, `素材編輯：第 ${i + 1} 格`);
+    });
+    wrap.appendChild(b);
+  });
+  dlg.showModal();
+}
+$("grid-pick-close")?.addEventListener("click", () => $("grid-pick-dialog").close());
+$("grid-pick-dialog")?.addEventListener("click", (e) => {
+  if (e.target === $("grid-pick-dialog")) e.target.close();
+});
+
+const stickerSelection = new Set();
+let stickerTagFilter = "";
+
+function refreshStickerBatchBar(total) {
+  const bar = $("sticker-batch-bar");
+  if (!bar) return;
+  bar.hidden = total === 0;
+  $("sticker-batch-count").textContent = stickerSelection.size
+    ? `已勾 ${stickerSelection.size} 張` : "";
+}
+
 async function renderStickerLibrary() {
   const wrap = $("sticker-lib-cards");
   const section = $("sticker-lib-section");
@@ -4290,8 +4410,23 @@ async function renderStickerLibrary() {
   all.sort((a, b) => b.updatedAt - a.updatedAt);
   section.hidden = all.length === 0;
   $("sticker-lib-count").textContent = `(${all.length})`;
+  // Tag filter options rebuild.
+  const tagSel = $("sticker-tag-filter");
+  if (tagSel) {
+    const tags = [...new Set(all.map((x) => x.tag).filter(Boolean))].sort();
+    tagSel.innerHTML = "";
+    tagSel.appendChild(new Option("全部 tag", ""));
+    for (const tg of tags) tagSel.appendChild(new Option(tg, tg));
+    tagSel.value = tags.includes(stickerTagFilter) ? stickerTagFilter : "";
+    if (tagSel.value === "") stickerTagFilter = "";
+  }
+  for (const id of [...stickerSelection]) {
+    if (!all.some((x) => x.id === id)) stickerSelection.delete(id);
+  }
+  refreshStickerBatchBar(all.length);
   wrap.innerHTML = "";
-  for (const e of all) {
+  const shown = stickerTagFilter ? all.filter((x) => x.tag === stickerTagFilter) : all;
+  for (const e of shown) {
     const card = document.createElement("div");
     card.className = "sticker-lib-card";
     card.title = e.name || "成品貼圖";
@@ -4299,6 +4434,23 @@ async function renderStickerLibrary() {
     img.alt = e.name || "finished sticker";
     img.src = URL.createObjectURL(e.pngBlob);
     card.appendChild(img);
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.className = "sticker-check";
+    check.title = "勾選做批次操作";
+    check.checked = stickerSelection.has(e.id);
+    check.addEventListener("change", () => {
+      if (check.checked) stickerSelection.add(e.id);
+      else stickerSelection.delete(e.id);
+      refreshStickerBatchBar(1);
+    });
+    card.appendChild(check);
+    if (e.tag) {
+      const pill = document.createElement("span");
+      pill.className = "sticker-tag-pill";
+      pill.textContent = e.tag;
+      card.appendChild(pill);
+    }
     const bar = document.createElement("div");
     bar.className = "sticker-lib-bar";
     const mk = (label, title, fn) => {
@@ -4310,10 +4462,36 @@ async function renderStickerLibrary() {
       bar.appendChild(b);
     };
     mk("＋", "加入貼圖池", () => queuePoolOp(() => appendFinishedSticker(e.id)));
+    mk("✏️", "重新編輯（原參數）", async () => {
+      const src = e.srcGridId ? await idbGetGeneration(e.srcGridId) : null;
+      let tile;
+      if (src) {
+        const split = await splitGrid(await loadImage(URL.createObjectURL(src.gridBlob)));
+        const cv = split[e.srcIdx];
+        if (cv) {
+          tile = makeTile(cv, { srcGridId: e.srcGridId, srcIdx: e.srcIdx });
+          tile.textParams = e.textParams ? { ...e.textParams } : null;
+          if (e.cleanParams) await cleanTile(tile, e.cleanParams);
+        }
+      }
+      if (!tile) {
+        tile = makeTile(await stickerToCanvas(e), {});
+        tile.transparent = true;
+        showToast("來源 grid 已不在素材庫 — 以定稿圖為底繼續編輯");
+      }
+      tile.srcStickerId = e.id; // 再存 = 更新同一張成品
+      openDetachedEditor(tile, `重新編輯：${e.name || "成品"}`);
+    });
     mk("📌", "重命名", async () => {
       const n = prompt("成品名稱：", e.name || "");
       if (n === null) return;
       await idbPut("stickers", { ...e, name: n.trim() || null, updatedAt: Date.now() });
+      renderStickerLibrary();
+    });
+    mk("🏷", "設定分類 tag", async () => {
+      const tg = prompt("分類 tag（留空 = 清除）：", e.tag || "");
+      if (tg === null) return;
+      await idbPut("stickers", { ...e, tag: tg.trim() || null, updatedAt: Date.now() });
       renderStickerLibrary();
     });
     mk("⬇", "下載 PNG", () => triggerDownload(e.pngBlob, `${e.name || e.id}.png`));
@@ -4448,7 +4626,11 @@ function buildHistoryCard(e) {
       <button class="act-download" title="下載">⬇</button>
       <button class="act-delete" title="刪除">🗑</button>
     </div>`;
-  card.querySelector("img").src = URL.createObjectURL(e.thumbnailBlob);
+  const cardImg = card.querySelector("img");
+  cardImg.src = URL.createObjectURL(e.thumbnailBlob);
+  cardImg.style.cursor = "zoom-in";
+  cardImg.title = "點我挑一格直接編輯（不動貼圖池）";
+  cardImg.addEventListener("click", () => openGridPicker(e));
   card.querySelector(".act-load").onclick = () => queuePoolOp(() => loadFromHistory(e.id));
   card.querySelector(".act-add").onclick = () => queuePoolOp(() => appendFromHistory(e.id));
   card.querySelector(".act-star").onclick = async () => {
@@ -4586,6 +4768,28 @@ document.querySelectorAll(".assets-filter").forEach((b) =>
     renderHistoryUi();
   }));
 $("assets-import-btn")?.addEventListener("click", () => gridFileInput.click());
+$("sticker-tag-filter")?.addEventListener("change", (e) => {
+  stickerTagFilter = e.target.value;
+  renderStickerLibrary();
+});
+$("sticker-batch-pool")?.addEventListener("click", () => {
+  const ids = [...stickerSelection];
+  if (ids.length === 0) { showToast("先勾選幾張成品"); return; }
+  queuePoolOp(async () => {
+    for (const id of ids) await appendFinishedSticker(id);
+  });
+  stickerSelection.clear();
+  renderStickerLibrary();
+});
+$("sticker-batch-delete")?.addEventListener("click", async () => {
+  const ids = [...stickerSelection];
+  if (ids.length === 0) { showToast("先勾選幾張成品"); return; }
+  if (!confirm(`刪除勾選的 ${ids.length} 張成品？（引用它們的專案格子會失效）`)) return;
+  for (const id of ids) await idbDelFrom("stickers", id);
+  stickerSelection.clear();
+  await renderStickerLibrary();
+  renderHistoryUi();
+});
 
 // --- Project bar wiring (issue #25) ---
 $("project-select")?.addEventListener("change", (e) => {
