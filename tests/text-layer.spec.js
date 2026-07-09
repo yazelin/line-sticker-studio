@@ -93,6 +93,29 @@ test("free drag repositions text and margin warning fires near edges", async ({ 
   expect(topBand).toBeGreaterThan(300);
 });
 
+test("native image drag is suppressed; drag keeps following across moves", async ({ page }) => {
+  await openZoom(page);
+  await page.locator("#text-content").fill("跟著走");
+  const img = page.locator("#tile-dialog-img");
+  expect(await img.evaluate((el) => el.draggable)).toBe(false);
+  expect(await img.evaluate((el) => {
+    const ev = new Event("dragstart", { bubbles: true, cancelable: true });
+    el.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  })).toBe(true);
+
+  // pointerdown top-left → move to bottom-right → release: text must land
+  // at the LAST position (native DnD would have frozen it mid-way).
+  const box = await img.boundingBox();
+  await img.dispatchEvent("pointerdown", { clientX: box.x + 10, clientY: box.y + 10, pointerId: 9 });
+  await img.dispatchEvent("pointermove", { clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, pointerId: 9 });
+  await img.dispatchEvent("pointermove", { clientX: box.x + box.width - 12, clientY: box.y + box.height - 12, pointerId: 9 });
+  await img.dispatchEvent("pointerup", { pointerId: 9 });
+  await page.locator("#tile-dialog-close").click();
+  const bottomBand = await bandOpaque(page, CELL0_IMG, 0.8, 1.0);
+  expect(bottomBand).toBeGreaterThan(300);
+});
+
 test("queryLocalFonts (stubbed) fills the local-font group", async ({ page }) => {
   // Re-init with the API present.
   await page.addInitScript(() => {
