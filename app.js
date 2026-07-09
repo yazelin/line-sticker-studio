@@ -1694,14 +1694,21 @@ function openTileDialog(idx) {
   refreshTileDialog();
   syncTextPanelFromTile(tile);
   syncAdvSliders(tile);
-  tileDialog.showModal();
+  refreshTextMarginWarn(tile);
+  if (!tileDialog.open) tileDialog.showModal();
 }
 
 function refreshTileDialog() {
   const tile = state.tiles[tileDialogIdx];
   if (!tile) return;
   tileDialogImg.src = tileDataUrl(tile);
-  tileDialogTitle.textContent = `第 ${String(tileDialogIdx + 1).padStart(2, "0")} 張`;
+  tileDialogTitle.textContent =
+    `第 ${String(tileDialogIdx + 1).padStart(2, "0")} / ${String(state.tiles.length).padStart(2, "0")} 張`;
+  const incBtn = $("tile-include-btn");
+  if (incBtn) {
+    incBtn.textContent = tile.included ? "✓ 已選入" : "✗ 未選入";
+    incBtn.classList.toggle("off", !tile.included);
+  }
   $("tile-set-main-btn")?.classList.toggle("active", state.mainTile === tile);
   $("tile-set-tab-btn")?.classList.toggle("active", state.tabTile === tile);
   const rerollBtn = $("tile-reroll-btn");
@@ -1798,6 +1805,27 @@ $("tile-adv-reset")?.addEventListener("click", () => {
 
 $("tile-dialog-close")?.addEventListener("click", () => tileDialog.close());
 $("tile-dialog-x")?.addEventListener("click", () => tileDialog.close());
+
+// --- Editor navigation: flip through the whole pool without closing ---
+function navTile(delta) {
+  if (state.tiles.length === 0) return;
+  const n = state.tiles.length;
+  openTileDialog((tileDialogIdx + delta + n) % n);
+}
+$("tile-prev")?.addEventListener("click", () => navTile(-1));
+$("tile-next")?.addEventListener("click", () => navTile(1));
+tileDialog?.addEventListener("keydown", (e) => {
+  // Don't hijack arrows while typing text or sliding a range control.
+  const t = e.target;
+  const tag = t?.tagName;
+  if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+  if (e.key === "ArrowLeft") { e.preventDefault(); navTile(-1); }
+  if (e.key === "ArrowRight") { e.preventDefault(); navTile(1); }
+});
+$("tile-include-btn")?.addEventListener("click", () => {
+  toggleIncluded(tileDialogIdx);
+  refreshTileDialog();
+});
 // Backdrop click closes too — the bottom close button needed scrolling
 // on short screens. e.target === dialog only for clicks OUTSIDE the
 // content wrapper (.tile-dialog-body).
