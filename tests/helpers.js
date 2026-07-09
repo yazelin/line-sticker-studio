@@ -86,6 +86,9 @@ export async function uploadGrid(page, buffer, name = "grid.png") {
   await page.setInputFiles("#grid-file-input", {
     name, mimeType: "image/png", buffer,
   });
+  // Uploads land in the assets workspace (material stage); most tests
+  // operate on the pool, so hop to pack once processing kicked off.
+  await page.locator('.studio-tab[data-tab="pack"]').click();
 }
 
 // Parse PNG width/height from the IHDR chunk.
@@ -140,6 +143,7 @@ export async function uploadGrids(page, buffers) {
     "#grid-file-input",
     buffers.map((buffer, i) => ({ name: `grid-${i + 1}.png`, mimeType: "image/png", buffer })),
   );
+  await page.locator('.studio-tab[data-tab="pack"]').click();
 }
 
 // Click a download trigger and return the downloaded file as a Buffer.

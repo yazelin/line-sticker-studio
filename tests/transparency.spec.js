@@ -60,7 +60,8 @@ test("magenta grid auto-switches key color and keys out cleanly", async ({ page 
 
 test("green grid keeps clean path: no warning toast, no opaque confirm", async ({ page }) => {
   await uploadGrid(page, await makeGridBuffer(page, "green"));
-  await expect(page.locator(".toast")).toHaveCount(0);
+  // Info toast (存入素材庫) is fine — but no backdrop WARNING.
+  await expect(page.locator(".toast")).not.toContainText("不是綠幕");
   await page.locator("#bg-remove-btn").click();
   await expect(page.locator("#bg-progress-text")).toContainText("完成", { timeout: 30_000 });
   const dialogs = [];

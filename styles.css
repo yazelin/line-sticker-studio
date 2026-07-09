@@ -272,17 +272,15 @@ main {
 #history-count.warn { color: #c0392b; font-weight: 700; }
 
 .history-cards {
-  display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
-  padding: 0.4rem 0.2rem 0.6rem;
-  scrollbar-width: thin;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 4px 0 8px;
 }
 .history-cards::-webkit-scrollbar { height: 8px; }
 .history-cards::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
 
 .history-card {
-  flex: 0 0 150px;
   background: #fff;
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1400,8 +1398,8 @@ body.has-pool #pack-empty { display: none; }
 
 .sticker-lib-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
   margin: 0.4rem 0 0.9rem;
 }
 .sticker-lib-card {

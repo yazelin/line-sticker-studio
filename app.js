@@ -1126,8 +1126,8 @@ async function handleGridUploads(fileList) {
   $("step-download").hidden = false;
   renderPool();
   gridFileInput.value = "";
-  showToast(`已載入 ${files.length} 張 grid（${state.tiles.length} 格），套組張數自動設為 ${state.packSize}（可改）`);
-  switchTab("pack");
+  showToast(`已存入素材庫 ${files.length} 張；${state.tiles.length} 格已進貼圖池、套組張數自動設 ${state.packSize}（要打包到「組包出貨」）`);
+  switchTab("assets");
 }
 
 // Sample the 4 corner patches of an uploaded grid and classify the
@@ -1232,13 +1232,14 @@ async function handleGridUpload(file) {
   // Backdrop sanity check — auto-switch key color when the grid clearly
   // uses the other chroma plate; warn when it's neither (white/photo bg).
   const detected = detectGridKeyColor(img);
+  let uploadNote = "";
   if (detected === "green" || detected === "magenta") {
     if (detected !== state.chromaKey) {
       setChromaKey(detected, { persist: false });
-      showToast(`偵測到${CHROMA_KEYS[detected].label}背景，已自動切換 key 色為 ${CHROMA_KEYS[detected].label}`);
+      uploadNote = `偵測到${CHROMA_KEYS[detected].label}背景，已自動切換 key 色。`;
     }
   } else {
-    showToast(`⚠ 來源背景色 ${detected} 看起來不是綠幕/洋紅幕 — 去背可能失敗，LINE 上架需要透明背景`);
+    uploadNote = `⚠ 來源背景色 ${detected} 看起來不是綠幕/洋紅幕 — 去背可能失敗，LINE 上架需要透明背景。`;
   }
   const ratio = img.naturalWidth / img.naturalHeight;
   if (ratio < 0.85 || ratio > 1.18) {
@@ -1288,7 +1289,8 @@ async function handleGridUpload(file) {
   }
   renderPool();
   $("step-download").hidden = false;
-  switchTab("pack");
+  showToast(`${uploadNote}已存入素材庫；9 格也已進貼圖池（要打包到「組包出貨」）`);
+  switchTab("assets");
 }
 
 // ------------------------------------------------------------------

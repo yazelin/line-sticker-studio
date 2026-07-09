@@ -26,6 +26,20 @@ test("filters split BYOG vs AI vs starred", async ({ page }) => {
   await expect(page.locator(".history-card")).toHaveCount(1);
 });
 
+test("history and finished-sticker cards share one column width", async ({ page }) => {
+  await uploadGrid(page, await makeGridBuffer(page, "green"));
+  // Make one finished sticker so both sections render.
+  await page.locator("#stickers-grid .sticker-cell").first().locator("img").click();
+  await page.locator("#tile-clean-btn").click();
+  await expect(page.locator("#tile-dialog-status")).toContainText("已去背", { timeout: 20_000 });
+  await page.locator("#tile-save-sticker-btn").click();
+  await page.locator("#tile-dialog-x").click();
+  await page.locator('.studio-tab[data-tab="assets"]').click();
+  const h = await page.locator(".history-card").first().boundingBox();
+  const s = await page.locator(".sticker-lib-card").first().boundingBox();
+  expect(Math.abs(h.width - s.width)).toBeLessThan(1.5);
+});
+
 test("storage usage line renders MB figure", async ({ page }) => {
   await uploadGrid(page, await makeGridBuffer(page, "green"));
   await page.locator('.studio-tab[data-tab="assets"]').click();

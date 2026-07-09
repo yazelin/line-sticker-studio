@@ -30,13 +30,16 @@ test("hash deep-link opens the requested workspace", async ({ page }) => {
   await expect(page.locator("#step-upload")).toBeHidden();
 });
 
-test("upload auto-lands in pack with the pool visible", async ({ page }) => {
+test("upload lands in ASSETS (material stage); pool is silently ready", async ({ page }) => {
   await ackRules(page);
-  await uploadGrid(page, await makeGridBuffer(page, "green"));
-  await expect(page.locator("#step-preview")).toBeVisible();
+  // Raw setInputFiles (no helper hop): assert the app's own landing tab.
+  await page.setInputFiles("#grid-file-input", {
+    name: "g.png", mimeType: "image/png", buffer: await makeGridBuffer(page, "green"),
+  });
+  await expect(page.locator("#history-section")).toBeVisible();
+  expect(page.url()).toContain("#assets");
+  // Pool got prepared in the background.
+  await page.locator('.studio-tab[data-tab="pack"]').click();
   await expect(page.locator("#stickers-grid .sticker-cell")).toHaveCount(9);
-  await expect(page.locator("#pack-empty")).toBeHidden(); // has-pool
-  expect(page.url()).toContain("#pack");
-  // Source strip shows the grid we just uploaded.
   await expect(page.locator("#pack-source-cards .pack-source-card")).toHaveCount(1);
 });
