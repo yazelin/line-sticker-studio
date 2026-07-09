@@ -828,9 +828,9 @@ export default {
           error: "ai disabled",
           hint: "byog",
           message:
-            "AI 直接生成暫停服務中（後端維修）。請走免費 BYOG：到「自訂 8 格」複製 prompt，" +
+            "AI 直接生成暫停服務中（後端維修）。請走免費 BYOG：到「自訂 9 格」複製 prompt，" +
             "貼到 Gemini／ChatGPT 時務必「一起附上你的參考圖」，prompt 才會照你的圖生成；" +
-            "拿到 3×3 圖後再上傳回來，會自動切成 8 張 LINE 規格。",
+            "拿到 3×3 圖後再上傳回來，會自動切成 9 格 LINE 規格。",
         },
         503,
         cors,

@@ -882,7 +882,7 @@ async function generateAll() {
     }
     renderPool();
 
-    setGenProgress(100, `完成！產出 ${GRID_SIZE} 張、預設前 ${PACK_SIZE} 張打包。可點 9 號那張的「✓」改成它而排除其他。`);
+    setGenProgress(100, `完成！產出 ${GRID_SIZE} 格、預設勾選 ${PACK_SIZE} 張打包。可自由換勾選，或把更多 grid 入池湊 16–40 張大套組。`);
     $("step-download").hidden = false;
     switchTab("pack");
   } catch (err) {
@@ -3686,7 +3686,7 @@ async function renderPromptHistory() {
   const all = (await idbAllFrom("prompts")).sort((a, b) => b.ts - a.ts).slice(0, 10);
   list.innerHTML = "";
   if (all.length === 0) {
-    list.innerHTML = '<p class="hint mini">還沒有紀錄 — 在「自訂 8 格」按過「複製 prompt」就會存到這裡。</p>';
+    list.innerHTML = '<p class="hint mini">還沒有紀錄 — 在「自訂 9 格」按過「複製 prompt」就會存到這裡。</p>';
     return;
   }
   for (const r of all) {
@@ -3735,7 +3735,7 @@ async function renderPhraseSetSelect() {
 
 $("phrase-set-save")?.addEventListener("click", async () => {
   const cfg = readSlotConfigFromGrid();
-  if (cfg.every((s) => s === null)) { alert("目前 8 格全是隨機，沒東西可存。先填幾格再存。"); return; }
+  if (cfg.every((s) => s === null)) { alert("目前 9 格全是隨機，沒東西可存。先填幾格再存。"); return; }
   const name = window.prompt("短語組名稱：", "");
   if (!name || !name.trim()) return;
   await idbPut("phraseSets", {
