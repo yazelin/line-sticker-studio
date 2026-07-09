@@ -100,6 +100,31 @@ test("replace-load resets pack size to 8 (no stale 16 from prior project)", asyn
   await expect(page.locator("#selection-status")).toContainText("8/8");
 });
 
+test("ghost project (all sources deleted) can still be selected and deleted", async ({ page }) => {
+  await uploadGrid(page, await makeGridBuffer(page, "green"));
+  await page.locator("#project-name").fill("幽靈");
+  await page.locator("#project-name").blur();
+  await page.waitForTimeout(1000);
+
+  // Delete the source grid (accept the reference warning).
+  await page.locator('.studio-tab[data-tab="assets"]').click();
+  page.on("dialog", (d) => d.accept());
+  await page.locator(".history-card .act-delete").click();
+  await expect(page.locator(".history-card")).toHaveCount(0);
+
+  // Pack: bar stays visible even though the pool will be empty.
+  await page.locator('.studio-tab[data-tab="pack"]').click();
+  await expect(page.locator("#project-bar")).toBeVisible();
+  const v = await page.locator("#project-select option", { hasText: "幽靈" }).getAttribute("value");
+  await page.locator("#project-select").selectOption(v);
+  await expect(page.locator(".toast")).toContainText("全部刪除");
+  await expect(page.locator("#pack-empty")).toBeVisible();
+  await expect(page.locator("#project-bar")).toBeVisible(); // ← the old trap
+
+  await page.locator("#project-delete").click();
+  await expect(page.locator("#project-select option", { hasText: "幽靈" })).toHaveCount(0);
+});
+
 test("new-project button clears to an empty draft", async ({ page }) => {
   await uploadGrid(page, await makeGridBuffer(page, "green"));
   await page.waitForTimeout(1000);

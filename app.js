@@ -2534,7 +2534,11 @@ async function openProject(id) {
   $("step-download").hidden = !has;
   renderPool();
   localStorage.setItem(LAST_PROJECT_KEY, p.id);
-  if (dropped > 0) showToast(`有 ${dropped} 格的來源 grid 已不在素材庫，已略過`);
+  if (dropped > 0) {
+    showToast(tiles.length === 0
+      ? `這個專案引用的來源已全部刪除（${dropped} 格）— 可直接按「刪除」清掉這個專案`
+      : `有 ${dropped} 格的來源已不在素材庫，已略過`);
+  }
   renderProjectBar();
   return true;
 }

@@ -1371,6 +1371,8 @@ body[data-tab="pack"] [data-workspace]:not([data-workspace="pack"]) {
 body.has-pool #pack-empty { display: none; }
 
 @media (max-width: 700px) {
+  /* Fixed bottom nav: keep auto-scrolled targets clear of it. */
+  html { scroll-padding-bottom: 5.2rem; }
   .studio-nav {
     position: fixed;
     top: auto;
