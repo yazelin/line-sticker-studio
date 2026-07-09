@@ -110,11 +110,32 @@ async function generateThumbnail(blob, size = 220) {
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#fafafa";
   ctx.fillRect(0, 0, size, size);
-  const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+  // COVER-crop, not contain: a portrait BYOG grid used to get gray
+  // letterbox bars baked into its thumbnail, so its 3×3 rendered a size
+  // smaller than square AI grids on identical cards.
+  const scale = Math.max(size / img.naturalWidth, size / img.naturalHeight);
   const w = img.naturalWidth * scale;
   const h = img.naturalHeight * scale;
   ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
   return new Promise((r) => c.toBlob(r, "image/jpeg", 0.85));
+}
+
+// One-time thumbnail regeneration (old contain-style thumbs → cover).
+async function migrateThumbnailsOnce() {
+  const FLAG = "lss-thumbs-cover-v1";
+  if (localStorage.getItem(FLAG)) return;
+  localStorage.setItem(FLAG, "1");
+  try {
+    const all = await idbListGenerations();
+    for (const e of all) {
+      const thumb = await generateThumbnail(e.gridBlob);
+      await idbSaveGeneration({ ...e, thumbnailBlob: thumb });
+    }
+    if (all.length > 0) {
+      await renderHistoryUi();
+      await renderCurrentGridUi();
+    }
+  } catch { /* best-effort */ }
 }
 
 function genHistoryId() {
@@ -4870,6 +4891,7 @@ ensurePoolLoaded();
 renderCurrentGridUi();
 renderHistoryUi();
 renderStickerLibrary();
+migrateThumbnailsOnce();
 // Restore the last active project (multi-project, issue #25).
 queuePoolOp(() => restoreLastProject());
 // Re-register uploaded fonts (issue #8).
