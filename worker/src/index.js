@@ -357,12 +357,17 @@ function buildPrompt({ nine, styleHint, withText, campaign, lang, chromaKey }) {
   // description (any language, used as-is). Anything ≥ 2 chars not in dict
   // = treat as custom user input. Frontend already validates ≥ 2 too.
   let style;
-  if (STYLE_PRESETS[effectiveStyle]) {
+  let isMatch = false;
+  if (effectiveStyle === "match") {
+    style = STYLE_PRESETS.match;
+    isMatch = true;
+  } else if (STYLE_PRESETS[effectiveStyle]) {
     style = STYLE_PRESETS[effectiveStyle];
   } else if (typeof effectiveStyle === "string" && effectiveStyle.trim().length >= 2) {
     style = effectiveStyle.trim();
   } else {
     style = STYLE_PRESETS.match;
+    isMatch = true;
   }
   withText = effectiveWithText; // override the local var the rest of the fn uses
 
@@ -411,14 +416,26 @@ function buildPrompt({ nine, styleHint, withText, campaign, lang, chromaKey }) {
 +------+------+------+
 \`\`\``;
 
-  return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square LINE-style stickers featuring the same character from the reference image. Each tile is ONE complete chat sticker.
+  // Two very different scaffolds: "match" must FAITHFULLY copy the
+  // reference's medium (the old shared scaffold said the style block
+  // "overrides the source medium", which fought the match instruction
+  // and the model drifted to generic cute-sticker style); a user-chosen
+  // style must TRANSFORM the source into that medium.
+  const styleBlock = isMatch
+    ? `STYLE — REPLICATE THE REFERENCE IMAGE (HARD CONSTRAINT, second only to content compliance):
+Copy the reference image's art style EXACTLY: the same medium, the same drawing technique, the same line weight, the same color palette, the same shading and rendering. Every tile must look like it was drawn by the SAME artist with the SAME tools as the reference. Do NOT beautify, do NOT chibi-fy, do NOT simplify into a generic "cute sticker" look, do NOT change body proportions or facial structure. If the reference is a photo → photorealistic tiles; watercolor → watercolor; oil → oil; 3D render → 3D render; rough doodle → the SAME rough doodle.
 
-STYLE (DOMINANT — overrides the source image's medium):
+The SOURCE image's style WINS over any sticker-genre habits. Only the pose, expression and phrase change between tiles — the art style must be indistinguishable from the reference.`
+    : `STYLE (DOMINANT — overrides the source image's medium):
 ${style}
 
-This style applies to ALL 9 tiles. If the user provided a photo and the style says "anime / 3D / pixel / watercolor / etc", TRANSFORM the photo into that medium — do NOT keep it photo-realistic. If the style says "match" then keep the source medium; otherwise the style above wins. Color palette, line work, shading technique should all follow the STYLE block, not the source.
+This style applies to ALL 9 tiles. If the user provided a photo and the style says "anime / 3D / pixel / watercolor / etc", TRANSFORM the photo into that medium — do NOT keep it photo-realistic. Color palette, line work, shading technique should all follow the STYLE block, not the source.`;
 
-CHARACTER IDENTITY (persists across all 9 tiles, but is RE-RENDERED in the chosen style):
+  return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square chat stickers featuring the same character from the reference image. Each tile is ONE complete chat sticker.
+
+${styleBlock}
+
+CHARACTER IDENTITY (persists across all 9 tiles${isMatch ? "" : ", but is RE-RENDERED in the chosen style"}):
 The character must be recognizably the same person/creature across all 9 tiles — same hair colour & shape, same clothing colour, same general face features. But identity does NOT mean keeping the source medium. If the source is a photo and the style is anime, the 9 tiles are 9 anime portraits of "this person turned anime". If the style is pixel art, the 9 tiles are 9 pixel-art versions of the same character. Only the pose / expression / phrase changes between tiles; the rendered art style stays uniform.
 
 STICKER FRAMING (every tile):
