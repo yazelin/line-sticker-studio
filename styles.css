@@ -1397,6 +1397,46 @@ body.has-pool #pack-empty { display: none; }
 }
 #storage-usage { margin-left: auto; }
 
+.sticker-lib-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  margin: 0.4rem 0 0.9rem;
+}
+.sticker-lib-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background:
+    repeating-conic-gradient(#f2f2f2 0% 25%, #ffffff 0% 50%) 50% / 10px 10px;
+}
+.sticker-lib-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 370 / 320;
+  object-fit: contain;
+}
+.sticker-lib-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px;
+  background: #fafafa;
+  border-top: 1px solid var(--border);
+}
+.sticker-lib-bar button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 2px 3px;
+}
+.pack-source-card.is-finished {
+  outline: 2px solid var(--line-green);
+  outline-offset: -2px;
+  background:
+    repeating-conic-gradient(#f2f2f2 0% 25%, #ffffff 0% 50%) 50% / 8px 8px;
+}
+
 .project-bar {
   display: flex;
   align-items: center;
