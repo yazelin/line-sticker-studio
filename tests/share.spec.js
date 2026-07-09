@@ -13,7 +13,7 @@ async function openFirstTileDialog(page) {
   await ackRules(page);
   await uploadGrid(page, await makeGridBuffer(page, "green"));
   await page.locator("#stickers-grid .sticker-cell").first()
-    .locator(".tile-zoom").click();
+    .locator("img").click();
   await expect(page.locator("#tile-dialog")).toBeVisible();
 }
 

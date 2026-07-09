@@ -455,7 +455,14 @@
   </dialog>
 
   <dialog id="tile-dialog" class="tile-dialog">
+   <div class="tile-dialog-body">
+    <button type="button" class="tile-dialog-x" id="tile-dialog-x" aria-label="關閉">✕</button>
     <h3 id="tile-dialog-title">放大檢視</h3>
+    <div class="tile-dialog-actions-row">
+      <button type="button" class="ghost" id="tile-set-main-btn" title="這張當 main.png（商店門面 240×240）">主圖</button>
+      <button type="button" class="ghost" id="tile-set-tab-btn" title="這張當聊天室標籤 tab.png（96×74）">標籤</button>
+      <button type="button" class="ghost" id="tile-reroll-btn" hidden title="用 AI 重抽這一格（耗 1 次呼叫）">重抽</button>
+    </div>
     <div class="tile-dialog-stage">
       <div class="tile-dialog-imgwrap">
         <img id="tile-dialog-img" alt="貼圖放大預覽" draggable="false" />
@@ -558,6 +565,7 @@
       </button>
       <button type="button" class="primary" id="tile-share-btn" hidden>分享這張</button>
     </menu>
+   </div>
   </dialog>
 
   <section class="card" id="library-panel" data-workspace="create">
@@ -624,7 +632,7 @@
       <span id="bg-progress-text">載入去背模型…</span>
     </div>
 
-    <p class="hint">每張右上的 ✓ / ✗ 控制是否打包進 ZIP。想出 16/24/32/40 張的大套組：先選張數，再從下方「歷史」按「＋」把其他 grid 的格子加進貼圖池，或一次選多張 3×3 圖上傳。</p>
+    <p class="hint">右上 ✓/✗ 控制是否打包。<strong>點貼圖 = 放大編輯</strong>（去背、文字、主圖/標籤、下載）；<strong>按住拖曳 = 換順序</strong>（手機長按再拖）。大套組：選張數後從「歷史」＋ 或多選上傳把格子加進池。</p>
     <div class="pack-size-row">
       <span class="pack-size-label">LINE 套組張數</span>
       <div class="pack-size-chips" id="pack-size-chips"></div>

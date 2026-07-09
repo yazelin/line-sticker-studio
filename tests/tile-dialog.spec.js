@@ -14,8 +14,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 function zoomBtn(page, i) {
-  return page.locator("#stickers-grid .sticker-cell").nth(i)
-    .locator(".tile-toolbar button", { hasText: "⤢" });
+  return page.locator("#stickers-grid .sticker-cell").nth(i).locator("img");
 }
 
 test("zoom opens with the tile image and raw status", async ({ page }) => {

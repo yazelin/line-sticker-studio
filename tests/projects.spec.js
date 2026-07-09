@@ -18,7 +18,9 @@ test("pool autosaves and survives a reload (selection/main/packSize/clean)", asy
   // Mutate: drop tile 1, add tile 9, main = tile 3, clean all.
   await cells(page).nth(0).locator(".tile-include-toggle").click();
   await cells(page).nth(8).locator(".tile-include-toggle").click();
-  await cells(page).nth(2).locator(".tile-pick").nth(0).click();
+  await cells(page).nth(2).locator("img").click();
+  await page.locator("#tile-set-main-btn").click();
+  await page.locator("#tile-dialog-x").click();
   await page.locator("#bg-remove-btn").click();
   await expect(page.locator("#bg-progress-text")).toContainText("完成", { timeout: 30_000 });
   await page.waitForTimeout(1200); // autosave debounce

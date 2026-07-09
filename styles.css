@@ -1184,15 +1184,45 @@ button, .primary, .ghost {
 
 .sticker-cell {
   position: relative;
-  aspect-ratio: 370 / 320;
+  display: flex;
+  flex-direction: column;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background:
-    repeating-conic-gradient(#f4f4f4 0% 25%, #ffffff 0% 50%) 50% / 12px 12px;
+  background: #fff;
   cursor: pointer;
   overflow: hidden;
   transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
+.tile-art {
+  position: relative;
+  aspect-ratio: 370 / 320;
+  background:
+    repeating-conic-gradient(#f4f4f4 0% 25%, #ffffff 0% 50%) 50% / 12px 12px;
+}
+.tile-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-top: 1px solid var(--border);
+  background: #fafafa;
+  line-height: 1;
+}
+.tile-num {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+}
+.tile-badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #fff;
+  background: var(--line-green);
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+.tile-bar .tile-include-toggle { margin-left: auto; }
 
 .sticker-cell:hover {
   border-color: var(--line-green);
@@ -1200,26 +1230,14 @@ button, .primary, .ghost {
   box-shadow: var(--shadow);
 }
 
-.sticker-cell img {
+.tile-art img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
 }
 
-.sticker-cell::after {
-  content: attr(data-num);
-  position: absolute;
-  top: 4px;
-  left: 6px;
-  font-size: 0.7rem;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
+
 
 .sticker-cell .edit-overlay {
   position: absolute;
@@ -1258,12 +1276,8 @@ button, .primary, .ghost {
 }
 
 .tile-include-toggle {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 3;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border: none;
   border-radius: 50%;
   background: var(--line-green);
@@ -1506,6 +1520,32 @@ body.is-offline .theme-gen-row {
   border-radius: var(--radius-sm, 12px);
   padding: 1rem 1.1rem;
 }
+.tile-dialog-body { position: relative; }
+.tile-dialog-x {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: #f0f0f0;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.tile-dialog-x:hover { background: #e3e3e3; }
+.tile-dialog-actions-row {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.3rem 0 0.5rem;
+}
+.tile-dialog-actions-row .active {
+  background: var(--line-green);
+  border-color: var(--line-green);
+  color: #fff;
+}
 .tile-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .tile-dialog-stage {
   display: flex;
@@ -1667,6 +1707,14 @@ body.is-offline .theme-gen-row {
   color: #fff;
 }
 
+.sticker-cell.dragging {
+  opacity: 0.6;
+  outline: 3px dashed var(--line-green);
+  outline-offset: -3px;
+  z-index: 5;
+}
+.tile-art img { touch-action: pan-y; }
+
 .tile-toolbar {
   position: absolute;
   left: 4px;
@@ -1697,23 +1745,7 @@ body.is-offline .theme-gen-row {
   background: var(--line-green);
   color: #fff;
 }
-.sticker-cell.is-main::before,
-.sticker-cell.is-tab::before {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  z-index: 3;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--line-green);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 800;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-.sticker-cell.is-main::before { content: "主圖"; }
-.sticker-cell.is-tab::before { content: "標籤"; }
-.sticker-cell.is-main.is-tab::before { content: "主圖+標籤"; }
+
 
 .selection-status {
   margin: 0.25rem 0 0.85rem;

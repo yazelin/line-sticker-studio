@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openAdvanced(page) {
-  await page.locator("#stickers-grid .sticker-cell").first().locator(".tile-zoom").click();
+  await page.locator("#stickers-grid .sticker-cell").first().locator("img").click();
   await page.locator("#tile-advanced summary").click();
 }
 
@@ -58,7 +58,7 @@ test("custom tuning persists into the project and reload restores it", async ({ 
   await expect(page.locator("#stickers-grid .sticker-cell")).toHaveCount(9, { timeout: 15_000 });
   expect(await transparentPixelCount(page, CELL0)).toBeGreaterThan(30_000);
   // Reopen dialog — stored custom value is loaded back into the slider.
-  await page.locator("#stickers-grid .sticker-cell").first().locator(".tile-zoom").click();
+  await page.locator("#stickers-grid .sticker-cell").first().locator("img").click();
   await expect(page.locator("#adv-hard")).toHaveValue("0.18");
   await expect(page.locator("#tile-dialog-status")).toContainText("自訂細調");
 });

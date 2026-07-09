@@ -1492,13 +1492,38 @@ function renderTileIntoCell(idx, tile) {
   cell.classList.toggle("is-main", state.mainTile === tile);
   cell.classList.toggle("is-tab", state.tabTile === tile);
   cell.dataset.num = String(idx + 1).padStart(2, "0");
+  cell.dataset.idx = String(idx);
   cell.innerHTML = "";
+  // Art area: NOTHING overlays the sticker itself.
+  const art = document.createElement("div");
+  art.className = "tile-art";
   const img = document.createElement("img");
   img.src = tileDataUrl(tile);
   img.alt = `sticker ${idx + 1}`;
-  cell.appendChild(img);
+  img.draggable = false;
+  img.addEventListener("dragstart", (e) => e.preventDefault());
+  art.appendChild(img);
+  cell.appendChild(art);
 
-  // Inclusion toggle (top-right corner). Always present.
+  // Info bar below the art: number · main/tab badges · include toggle.
+  const bar = document.createElement("div");
+  bar.className = "tile-bar";
+  const num = document.createElement("span");
+  num.className = "tile-num";
+  num.textContent = String(idx + 1).padStart(2, "0");
+  bar.appendChild(num);
+  if (state.mainTile === tile) {
+    const b = document.createElement("span");
+    b.className = "tile-badge";
+    b.textContent = "主圖";
+    bar.appendChild(b);
+  }
+  if (state.tabTile === tile) {
+    const b = document.createElement("span");
+    b.className = "tile-badge";
+    b.textContent = "標籤";
+    bar.appendChild(b);
+  }
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "tile-include-toggle";
@@ -1508,63 +1533,113 @@ function renderTileIntoCell(idx, tile) {
     e.stopPropagation();
     toggleIncluded(idx);
   });
-  cell.appendChild(toggle);
-
-  // Per-cell download button.
-  const dl = document.createElement("button");
-  dl.type = "button";
-  dl.className = "tile-download";
-  dl.title = "單獨下載這張 PNG";
-  dl.innerHTML =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
-  dl.addEventListener("click", (e) => {
-    e.stopPropagation();
-    downloadSingleTile(idx);
-  });
-  cell.appendChild(dl);
-
-  // Pool toolbar (bottom edge): reorder + main/tab pickers.
-  const bar = document.createElement("div");
-  bar.className = "tile-toolbar";
-  const mkBtn = (cls, label, title, onClick, disabled = false) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = cls;
-    b.textContent = label;
-    b.title = title;
-    b.disabled = disabled;
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    bar.appendChild(b);
-  };
-  mkBtn("tile-zoom", "⤢", "放大檢視／單張去背", () => openTileDialog(idx));
-  mkBtn("tile-move", "▲", "往前移（決定 ZIP 內 01…NN 順序）",
-    () => moveTile(idx, -1), idx === 0);
-  mkBtn("tile-move", "▼", "往後移",
-    () => moveTile(idx, +1), idx === state.tiles.length - 1);
-  mkBtn("tile-pick" + (state.mainTile === tile ? " active" : ""), "主",
-    "設為主圖 main.png（商店門面 240×240）", () => setMainTile(tile));
-  mkBtn("tile-pick" + (state.tabTile === tile ? " active" : ""), "標",
-    "設為聊天室標籤 tab.png（96×74）", () => setTabTile(tile));
+  bar.appendChild(toggle);
   cell.appendChild(bar);
 
-  // Re-roll only available when we have the original source image.
-  if (state.sourceFile) {
-    const overlay = document.createElement("div");
-    overlay.className = "edit-overlay";
-    overlay.textContent = "點我重抽";
-    cell.appendChild(overlay);
-    cell.onclick = () => promptRerollTile(idx);
-  } else {
-    // BYOG / history mode: the image itself zooms (no reroll overlay).
-    img.style.cursor = "zoom-in";
-    img.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openTileDialog(idx);
-    });
-  }
+  // The image itself is the whole interaction surface:
+  //   click / tap        → zoom dialog (download, main/tab, reroll, text…)
+  //   drag (long-press on touch) → reorder within the pool
+  img.style.cursor = "zoom-in";
+  attachTileDragAndZoom(cell, img, idx);
+}
+
+// ------------------------------------------------------------------
+// Drag-to-reorder + click-to-zoom on one pointer surface (issue: the
+// old per-tile button bar covered the artwork and clipped on narrow
+// cells). Mouse: drag past a small threshold lifts the tile. Touch:
+// long-press (350ms) lifts, so normal scrolling still works.
+
+let _justDragged = false;
+
+function attachTileDragAndZoom(cell, img, idx) {
+  let startX = 0, startY = 0, tracking = false, lifted = false;
+  let pressTimer = null;
+  const THRESH = 8;
+
+  const onDocMove = (ev) => {
+    ev.preventDefault();
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    const over = el?.closest?.(".sticker-cell");
+    if (over && over !== cell && over.parentElement === cell.parentElement) {
+      const grid = cell.parentElement;
+      const kids = [...grid.children];
+      const from = kids.indexOf(cell);
+      const to = kids.indexOf(over);
+      if (from > -1 && to > -1) {
+        grid.insertBefore(cell, from < to ? over.nextSibling : over);
+      }
+    }
+  };
+
+  const onDocUp = () => {
+    document.removeEventListener("pointermove", onDocMove);
+    document.removeEventListener("pointerup", onDocUp);
+    document.removeEventListener("pointercancel", onDocUp);
+    if (!lifted) return;
+    lifted = false;
+    tracking = false;
+    cell.classList.remove("dragging");
+    // Commit the DOM order back into state.tiles (dataset.idx holds the
+    // pre-drag index of every cell).
+    const grid = cell.parentElement;
+    const order = [...grid.children].map((c) => Number(c.dataset.idx));
+    state.tiles = order.map((i) => state.tiles[i]);
+    _justDragged = true;
+    setTimeout(() => { _justDragged = false; }, 0);
+    renderPool();
+  };
+
+  // Lift = the drag session starts. Move/up handling shifts to the
+  // DOCUMENT: after insertBefore the pointer is over OTHER cells, and
+  // (unlike setPointerCapture) document listeners also work for
+  // synthetic pointer events in tests.
+  const lift = () => {
+    if (lifted) return;
+    lifted = true;
+    cell.classList.add("dragging");
+    document.addEventListener("pointermove", onDocMove);
+    document.addEventListener("pointerup", onDocUp);
+    document.addEventListener("pointercancel", onDocUp);
+  };
+
+  img.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    tracking = true;
+    lifted = false;
+    startX = ev.clientX;
+    startY = ev.clientY;
+    if (ev.pointerType === "touch" && state.tiles.length > 1) {
+      pressTimer = setTimeout(lift, 350);
+    }
+  });
+
+  img.addEventListener("pointermove", (ev) => {
+    if (!tracking || lifted) return;
+    const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+    if (ev.pointerType === "touch") {
+      // Moving before the long-press fires = the user is scrolling.
+      if (dist > THRESH && pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+        tracking = false;
+      }
+      return;
+    }
+    if (dist > THRESH && state.tiles.length > 1) lift();
+  });
+
+  const stopTracking = () => {
+    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    tracking = false;
+  };
+  img.addEventListener("pointerup", stopTracking);
+  img.addEventListener("pointercancel", stopTracking);
+
+  img.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (_justDragged) return;
+    openTileDialog(Number(cell.dataset.idx));
+  });
 }
 
 // ------------------------------------------------------------------
@@ -1599,6 +1674,10 @@ function refreshTileDialog() {
   if (!tile) return;
   tileDialogImg.src = tileDataUrl(tile);
   tileDialogTitle.textContent = `第 ${String(tileDialogIdx + 1).padStart(2, "0")} 張`;
+  $("tile-set-main-btn")?.classList.toggle("active", state.mainTile === tile);
+  $("tile-set-tab-btn")?.classList.toggle("active", state.tabTile === tile);
+  const rerollBtn = $("tile-reroll-btn");
+  if (rerollBtn) rerollBtn.hidden = !state.sourceFile;
   if (tile.cleanParams) {
     const keyLabel = CHROMA_KEYS[tile.cleanParams.key]?.label || tile.cleanParams.key;
     const t = tile.cleanParams.tune;
@@ -1690,6 +1769,29 @@ $("tile-adv-reset")?.addEventListener("click", () => {
 });
 
 $("tile-dialog-close")?.addEventListener("click", () => tileDialog.close());
+$("tile-dialog-x")?.addEventListener("click", () => tileDialog.close());
+// Backdrop click closes too — the bottom close button needed scrolling
+// on short screens. e.target === dialog only for clicks OUTSIDE the
+// content wrapper (.tile-dialog-body).
+tileDialog?.addEventListener("click", (e) => {
+  if (e.target === tileDialog) tileDialog.close();
+});
+$("tile-set-main-btn")?.addEventListener("click", () => {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile) return;
+  setMainTile(tile);
+  refreshTileDialog();
+});
+$("tile-set-tab-btn")?.addEventListener("click", () => {
+  const tile = state.tiles[tileDialogIdx];
+  if (!tile) return;
+  setTabTile(tile);
+  refreshTileDialog();
+});
+$("tile-reroll-btn")?.addEventListener("click", () => {
+  tileDialog.close();
+  promptRerollTile(tileDialogIdx);
+});
 
 // --- Text layer controls (issue #8) ---
 const BUILTIN_FONTS = [

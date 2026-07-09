@@ -35,7 +35,7 @@ async function bandOpaque(page, selector, y0Frac, y1Frac) {
 }
 
 async function openZoom(page, i = 0) {
-  await page.locator("#stickers-grid .sticker-cell").nth(i).locator(".tile-zoom").click();
+  await page.locator("#stickers-grid .sticker-cell").nth(i).locator("img").click();
   await expect(page.locator("#tile-dialog")).toBeVisible();
   await page.locator("#tile-text-panel summary").click();
 }

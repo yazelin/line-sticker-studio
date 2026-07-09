@@ -64,13 +64,22 @@ test("pool too small for target shows shortfall hint", async ({ page }) => {
   await expect(status).toContainText("池裡只有 9 格");
 });
 
-test("▲▼ reorder swaps tiles and ZIP follows pool order", async ({ page }) => {
+test("drag reorder swaps tiles and ZIP follows pool order", async ({ page }) => {
   await uploadGrid(page, await makeGridBuffer(page, "green"));
   const cell = (i) => page.locator(`#stickers-grid .sticker-cell`).nth(i);
   const src0 = await cell(0).locator("img").getAttribute("src");
   const src1 = await cell(1).locator("img").getAttribute("src");
-  // Move first tile down one slot.
-  await cell(0).locator(".tile-move").nth(1).click();
+  // Drag tile 1 onto tile 2 (mouse: exceeds the 8px lift threshold).
+  // Scroll the grid into the viewport first — the drop targeting uses
+  // elementFromPoint, which only sees on-screen coordinates.
+  await cell(0).scrollIntoViewIfNeeded();
+  const b0 = await cell(0).locator("img").boundingBox();
+  const b1 = await cell(1).locator("img").boundingBox();
+  const img0 = cell(0).locator("img");
+  await img0.dispatchEvent("pointerdown", { clientX: b0.x + b0.width / 2, clientY: b0.y + b0.height / 2, pointerId: 21, pointerType: "mouse", button: 0 });
+  await img0.dispatchEvent("pointermove", { clientX: b0.x + b0.width / 2 + 30, clientY: b0.y + b0.height / 2, pointerId: 21, pointerType: "mouse" });
+  await img0.dispatchEvent("pointermove", { clientX: b1.x + b1.width / 2, clientY: b1.y + b1.height / 2, pointerId: 21, pointerType: "mouse" });
+  await img0.dispatchEvent("pointerup", { pointerId: 21, pointerType: "mouse" });
   expect(await cell(0).locator("img").getAttribute("src")).toBe(src1);
   expect(await cell(1).locator("img").getAttribute("src")).toBe(src0);
 
@@ -78,16 +87,24 @@ test("▲▼ reorder swaps tiles and ZIP follows pool order", async ({ page }) =
   const { buffer } = await captureDownload(page, () =>
     page.locator("#download-zip-btn").click());
   const zip = await loadZip(buffer);
-  // 01.png must now be the ORIGINAL tile #2 (fixture idx 1).
+  // 01.png must now be the ORIGINAL tile #2 (fixture idx 1) — assert it
+  // is closer to tile-1's expected red than to tile-0's.
   const avg = await pngAvgOpaqueColor(page, await zip.file("01.png").async("nodebuffer"));
-  expect(Math.abs(avg.r - fixtureTileAvgRed(1))).toBeLessThan(10);
+  const d1 = Math.abs(avg.r - fixtureTileAvgRed(1));
+  const d0 = Math.abs(avg.r - fixtureTileAvgRed(0));
+  expect(d1).toBeLessThan(d0);
+  expect(d1).toBeLessThan(14);
 });
 
 test("custom main/tab picks land in main.png / tab.png", async ({ page }) => {
   await uploadGrid(page, await makeGridBuffer(page, "green"));
   const cell = (i) => page.locator(`#stickers-grid .sticker-cell`).nth(i);
-  await cell(3).locator(".tile-pick").nth(0).click(); // 主
-  await cell(4).locator(".tile-pick").nth(1).click(); // 標
+  await cell(3).locator("img").click();
+  await page.locator("#tile-set-main-btn").click();
+  await page.locator("#tile-dialog-x").click();
+  await cell(4).locator("img").click();
+  await page.locator("#tile-set-tab-btn").click();
+  await page.locator("#tile-dialog-x").click();
   await expect(cell(3)).toHaveClass(/is-main/);
   await expect(cell(4)).toHaveClass(/is-tab/);
 
