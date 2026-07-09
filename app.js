@@ -209,18 +209,18 @@ const I18N = {
     "ko": "캐릭터 이미지 한 장 업로드 → AI가 스티커 팩 생성 → ZIP 다운로드 → LINE Creators Market 업로드",
   },
   step_a_title: {
-    "zh-TW": "🅰 主路徑：上傳角色圖讓 AI 產（每天 5 次免費，免登入）",
-    "zh-CN": "🅰 主路径：上传角色图让 AI 产（每天 5 次免费，免登入）",
-    "en": "🅰 Main path: upload a character image, let AI generate (5 free/day, no login)",
-    "ja": "🅰 メイン: キャラ画像をアップ、AI に生成させる（1日5回無料、ログイン不要）",
-    "ko": "🅰 메인 경로: 캐릭터 업로드 → AI 생성 (하루 5회 무료, 로그인 불필요)",
+    "zh-TW": "主路徑 A：上傳角色圖讓 AI 產（每天 5 次免費，免登入）",
+    "zh-CN": "主路径 A：上传角色图让 AI 产（每天 5 次免费，免登入）",
+    "en": "Path A: upload a character image, let AI generate (5 free/day, no login)",
+    "ja": "メイン A: キャラ画像をアップ、AI に生成させる（1日5回無料、ログイン不要）",
+    "ko": "경로 A: 캐릭터 업로드 → AI 생성 (하루 5회 무료, 로그인 불필요)",
   },
   step_b_title: {
-    "zh-TW": "🅱 替代路徑：直接上傳 3×3 圖（省 API、自己跑 Gemini）",
-    "zh-CN": "🅱 替代路径：直接上传 3×3 图（省 API、自己跑 Gemini）",
-    "en": "🅱 Alt path: upload your own 3×3 grid (saves API cost, run Gemini yourself)",
-    "ja": "🅱 代替: 自分で作った 3×3 グリッドをアップ (API節約、Geminiを自分で実行)",
-    "ko": "🅱 대체 경로: 직접 만든 3×3 그리드 업로드 (API 절약, Gemini 직접 실행)",
+    "zh-TW": "替代路徑 B：直接上傳 3×3 圖（省 API、自己跑 Gemini）",
+    "zh-CN": "替代路径 B：直接上传 3×3 图（省 API、自己跑 Gemini）",
+    "en": "Path B: upload your own 3×3 grid (saves API cost, run Gemini yourself)",
+    "ja": "代替 B: 自分で作った 3×3 グリッドをアップ (API節約、Geminiを自分で実行)",
+    "ko": "경로 B: 직접 만든 3×3 그리드 업로드 (API 절약, Gemini 직접 실행)",
   },
   step_config_title: {
     "zh-TW": "② 選樣式 + 短語（兩條路徑共用）",
@@ -230,18 +230,18 @@ const I18N = {
     "ko": "② 스타일 + 문구 (양 경로 공통)",
   },
   step_preview_title: {
-    "zh-TW": "🧺 貼圖池：挑選・去背・排序",
-    "zh-CN": "🧺 贴图池：挑选・去背・排序",
-    "en": "🧺 Pool: pick, key-out, arrange",
-    "ja": "🧺 プール：選択・背景除去・並べ替え",
-    "ko": "🧺 풀: 선택·배경 제거·정렬",
+    "zh-TW": "貼圖池：挑選・去背・排序",
+    "zh-CN": "贴图池：挑选・去背・排序",
+    "en": "Pool: pick, key-out, arrange",
+    "ja": "プール：選択・背景除去・並べ替え",
+    "ko": "풀: 선택·배경 제거·정렬",
   },
   step_download_title: {
-    "zh-TW": "📦 出貨：檢查 + 下載",
-    "zh-CN": "📦 出货：检查 + 下载",
-    "en": "📦 Ship: check + download",
-    "ja": "📦 出荷：チェック + ダウンロード",
-    "ko": "📦 출고: 점검 + 다운로드",
+    "zh-TW": "出貨：檢查 + 下載",
+    "zh-CN": "出货：检查 + 下载",
+    "en": "Ship: check + download",
+    "ja": "出荷：チェック + ダウンロード",
+    "ko": "출고: 점검 + 다운로드",
   },
   generate_btn: {
     "zh-TW": "開始生成貼圖",
@@ -279,11 +279,11 @@ const I18N = {
     "ko": "LINE 팩 ZIP 다운로드 (스티커 + main + tab + README)",
   },
   open_camera_btn: {
-    "zh-TW": "📷 用相機現拍",
-    "zh-CN": "📷 用相机现拍",
-    "en": "📷 Use camera",
-    "ja": "📷 カメラを使う",
-    "ko": "📷 카메라 사용",
+    "zh-TW": "用相機現拍",
+    "zh-CN": "用相机现拍",
+    "en": "Use camera",
+    "ja": "カメラを使う",
+    "ko": "카메라 사용",
   },
   upload_or: {
     "zh-TW": "或", "zh-CN": "或", "en": "or", "ja": "または", "ko": "또는",
@@ -944,7 +944,7 @@ async function generateAll() {
 }
 
 function showQuotaExceededModal() {
-  showByogHandoff(`今天的 ${auth.quota?.limit || 5} 次 AI 生成已用完 🥲`);
+  showByogHandoff(`今天的 ${auth.quota?.limit || 5} 次 AI 生成已用完`);
 }
 
 // Hand off to the free BYOG path. The critical, easy-to-miss step is that the
@@ -954,7 +954,7 @@ function showByogHandoff(headline) {
   const proceed = confirm(
     (headline ? headline + "\n\n" : "") +
     "免費替代方案：自己到 gemini.google.com 或 ChatGPT 跑，再把 3×3 圖丟到 BYOG 上傳框。\n\n" +
-    "⚠ 關鍵步驟（少了就生不出你的角色）：\n" +
+    "關鍵步驟（少了就生不出你的角色）：\n" +
     "  1. 複製 prompt\n" +
     "  2. 在 Gemini／ChatGPT「先上傳你的參考圖」，再貼上 prompt\n" +
     "     —— prompt 是描述「對這張圖做什麼」，沒附圖 prompt 就無從套用\n" +
@@ -1240,7 +1240,7 @@ async function handleGridUpload(file) {
       uploadNote = `偵測到${CHROMA_KEYS[detected].label}背景，已自動切換 key 色。`;
     }
   } else {
-    uploadNote = `⚠ 來源背景色 ${detected} 看起來不是綠幕/洋紅幕 — 去背可能失敗，LINE 上架需要透明背景。`;
+    uploadNote = `來源背景色 ${detected} 看起來不是綠幕/洋紅幕 — 去背可能失敗，LINE 上架需要透明背景。`;
   }
   const ratio = img.naturalWidth / img.naturalHeight;
   if (ratio < 0.85 || ratio > 1.18) {
@@ -1738,6 +1738,79 @@ let tileDialogIdx = -1;
 let editorDetachedTile = null;
 let editorDetachedTitle = "";
 
+// --- Editor history (undo/redo) — parameter-level snapshots ---
+let _hist = [];
+let _histIdx = -1;
+let _histTextTimer = null;
+
+function snapOf(tile) {
+  return JSON.stringify({
+    clean: tile.cleanParams || null,
+    text: tile.textParams || null,
+  });
+}
+
+function refreshHistoryButtons() {
+  const u = $("tile-undo");
+  const r = $("tile-redo");
+  if (u) u.disabled = _histIdx <= 0;
+  if (r) r.disabled = _histIdx >= _hist.length - 1;
+}
+
+function historyReset(tile) {
+  _hist = [snapOf(tile)];
+  _histIdx = 0;
+  refreshHistoryButtons();
+}
+
+function historyPush() {
+  const tile = editorTile();
+  if (!tile) return;
+  const snap = snapOf(tile);
+  if (snap === _hist[_histIdx]) return;
+  _hist = _hist.slice(0, _histIdx + 1);
+  _hist.push(snap);
+  _histIdx = _hist.length - 1;
+  refreshHistoryButtons();
+}
+
+function historyPushDebounced() {
+  clearTimeout(_histTextTimer);
+  _histTextTimer = setTimeout(historyPush, 450);
+}
+
+async function applyHistorySnap(snapStr) {
+  const tile = editorTile();
+  if (!tile || tile.busy) return;
+  tile.busy = true;
+  try {
+    const snap = JSON.parse(snapStr);
+    if (snap.clean) {
+      await cleanTile(tile, snap.clean);
+    } else if (tile.cleanParams) {
+      restoreTile(tile);
+    }
+    tile.textParams = snap.text ? { ...TEXT_DEFAULTS, ...snap.text } : null;
+    tile._url = null;
+    refreshEditorCell();
+    refreshTileDialog();
+    syncTextPanelFromTile(tile);
+    syncAdvSliders(tile);
+    refreshTextMarginWarn(tile);
+    if (editorInPool()) scheduleProjectSave();
+  } finally {
+    tile.busy = false;
+  }
+}
+
+async function historyStep(delta) {
+  const target = _histIdx + delta;
+  if (target < 0 || target >= _hist.length) return;
+  _histIdx = target;
+  refreshHistoryButtons();
+  await applyHistorySnap(_hist[_histIdx]);
+}
+
 function editorTile() {
   return editorDetachedTile || state.tiles[tileDialogIdx];
 }
@@ -1770,6 +1843,7 @@ function openDetachedEditor(tile, title) {
   syncTextPanelFromTile(tile);
   syncAdvSliders(tile);
   refreshTextMarginWarn(tile);
+  historyReset(tile);
   if (!tileDialog.open) tileDialog.showModal();
 }
 
@@ -1794,6 +1868,7 @@ function openTileDialog(idx) {
   syncTextPanelFromTile(tile);
   syncAdvSliders(tile);
   refreshTextMarginWarn(tile);
+  historyReset(tile);
   if (!tileDialog.open) tileDialog.showModal();
 }
 
@@ -1839,6 +1914,7 @@ tileCleanBtn?.addEventListener("click", async () => {
     });
     if (editorInPool()) renderPool();
     refreshTileDialog();
+    historyPush();
   } finally {
     tile.busy = false;
     tileCleanBtn.disabled = false;
@@ -1851,6 +1927,7 @@ tileRestoreBtn?.addEventListener("click", () => {
   restoreTile(tile);
   if (editorInPool()) renderPool();
   refreshTileDialog();
+  historyPush();
 });
 
 // --- Advanced chroma fine-tuning (issue #7) ---
@@ -1889,6 +1966,7 @@ function scheduleAdvApply() {
       await cleanTile(tile, { key: tileKeySelect.value, tune: advProfileFromSliders() });
       if (editorInPool()) renderPool();
       refreshTileDialog();
+      historyPush();
     } finally {
       tile.busy = false;
     }
@@ -1917,13 +1995,22 @@ function navTile(delta) {
 }
 $("tile-prev")?.addEventListener("click", () => navTile(-1));
 $("tile-next")?.addEventListener("click", () => navTile(1));
+$("tile-undo")?.addEventListener("click", () => historyStep(-1));
+$("tile-redo")?.addEventListener("click", () => historyStep(1));
 tileDialog?.addEventListener("keydown", (e) => {
-  // Don't hijack arrows while typing text or sliding a range control.
+  // Don't hijack keys while typing text or sliding a range control.
   const t = e.target;
   const tag = t?.tagName;
   if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
   if (e.key === "ArrowLeft") { e.preventDefault(); navTile(-1); }
   if (e.key === "ArrowRight") { e.preventDefault(); navTile(1); }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+    e.preventDefault(); historyStep(-1);
+  }
+  if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") ||
+      ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "z")) {
+    e.preventDefault(); historyStep(1);
+  }
 });
 $("tile-save-sticker-btn")?.addEventListener("click", async () => {
   const tile = editorTile();
@@ -1932,7 +2019,7 @@ $("tile-save-sticker-btn")?.addEventListener("click", async () => {
   // 定稿守門:背景沒去乾淨的成品 = 未來每個套組的退件地雷。
   if (tileBackgroundNotRemoved(composed)) {
     const ok = confirm(
-      "⚠ 這張的背景疑似還沒去乾淨（LINE 上架會被退件）。\n\n" +
+      "注意：這張的背景疑似還沒去乾淨（LINE 上架會被退件）。\n\n" +
       "→ 確定：仍要定稿成成品\n→ 取消：先去背再定稿",
     );
     if (!ok) return;
@@ -1980,8 +2067,8 @@ $("tile-save-sticker-btn")?.addEventListener("click", async () => {
   await renderStickerLibrary();
   await renderHistoryUi();
   showToast(editorInPool()
-    ? "✓ 已定稿成成品，池中這格已連結成品（之後 re-edit 成品會同步）"
-    : "✓ 已定稿存入素材庫「成品貼圖」— 隨時可挑進任何套組");
+    ? "已定稿成成品，池中這格已連結成品（之後 re-edit 成品會同步）"
+    : "已定稿存入素材庫「成品貼圖」— 隨時可挑進任何套組");
 });
 
 $("tile-include-btn")?.addEventListener("click", () => {
@@ -2075,7 +2162,7 @@ $("text-font-file")?.addEventListener("change", async (e) => {
     await idbPut("fonts", { id: name, name, blob: file });
     rebuildFontSelect(family);
     applyTextInput({ font: family });
-    if (status) { status.hidden = false; status.textContent = `✓ 已載入字型「${name}」（已存進瀏覽器，下次還在）`; }
+    if (status) { status.hidden = false; status.textContent = `已載入字型「${name}」（已存進瀏覽器，下次還在）`; }
   } catch (err) {
     if (status) { status.hidden = false; status.textContent = `字型載入失敗：${err.message || "檔案不是有效字型"}`; }
   }
@@ -2092,7 +2179,7 @@ $("text-local-fonts")?.addEventListener("click", async () => {
     }
     localFontFamilies.sort((a, b) => a.localeCompare(b));
     rebuildFontSelect($("text-font").value);
-    if (status) { status.hidden = false; status.textContent = `✓ 已列出 ${localFontFamilies.length} 個本機字型（只在本機合成，不會上傳）`; }
+    if (status) { status.hidden = false; status.textContent = `已列出 ${localFontFamilies.length} 個本機字型（只在本機合成，不會上傳）`; }
   } catch (err) {
     if (status) { status.hidden = false; status.textContent = `讀取本機字型失敗：${err.message}`; }
   }
@@ -2110,6 +2197,7 @@ function applyTextInput(patch) {
   refreshTileDialogPreviewOnly();
   refreshTextMarginWarn(tile);
   scheduleProjectSave();
+  historyPushDebounced();
 }
 
 function refreshTileDialogPreviewOnly() {
@@ -2274,14 +2362,14 @@ function refreshSelectionStatus() {
   const n = state.packSize;
   const included = state.tiles.filter((t) => t.included).length;
   if (included === n) {
-    sel.textContent = `✅ 已選 ${n}/${n} 張，可以下載 ZIP`;
+    sel.textContent = `已選 ${n}/${n} 張，可以下載 ZIP`;
     sel.className = "selection-status ready";
   } else if (included < n) {
-    sel.textContent = `⚠ 還差 ${n - included} 張才能打包（目前 ${included}/${n}）` +
+    sel.textContent = `還差 ${n - included} 張才能打包（目前 ${included}/${n}）` +
       (state.tiles.length < n ? ` — 池裡只有 ${state.tiles.length} 格，從歷史按「＋」再加一張 grid` : "");
     sel.className = "selection-status short";
   } else {
-    sel.textContent = `❌ 多選了 ${included - n} 張（最多 ${n}）`;
+    sel.textContent = `多選了 ${included - n} 張（最多 ${n}）`;
     sel.className = "selection-status over";
   }
   renderPackSizeChips();
@@ -2656,7 +2744,7 @@ function promptRerollTile(idx) {
     `第 ${idx + 1} 格的 phrase 是：「${current}」\n\n` +
       `想用同一個 phrase 重抽就直接按確定；\n` +
       `想換成別的字（中/英/日/梗圖台詞 OK）就在下面打：\n\n` +
-      `⚠ 重抽會打 1 次 Gemini API（約 50 秒、~USD 0.04）`,
+      `重抽會打 1 次 Gemini API（約 50 秒、~USD 0.04）`,
     tile.phrase || "",
   );
   if (newPhrase === null) return; // cancelled
@@ -3325,7 +3413,7 @@ async function downloadZip() {
   if (!anyTransparent) {
     const key = chromaKeyColor();
     const proceed = confirm(
-      `⚠ 還沒去背！下載的 PNG 都是${key.label}（chroma-key 用的 ${key.hex}），LINE Creators Market 規定透明背景，這樣上架會被退件。\n\n` +
+      `還沒去背！下載的 PNG 都是${key.label}（chroma-key 用的 ${key.hex}），LINE Creators Market 規定透明背景，這樣上架會被退件。\n\n` +
       "→ 確定：先去背再下載（推薦）— 我會自動執行去背\n" +
       `→ 取消：硬要下載${key.label}版本`,
     );
@@ -3349,7 +3437,7 @@ async function downloadZip() {
   });
   if (opaqueNums.length > 0) {
     const ok = confirm(
-      `⚠ 第 ${opaqueNums.join("、")} 張完全沒有透明背景 — LINE 上架會被退件。\n\n` +
+      `第 ${opaqueNums.join("、")} 張完全沒有透明背景 — LINE 上架會被退件。\n\n` +
       "常見原因：來源圖背景不是綠幕/洋紅幕，chroma-key 認不到。\n\n" +
       "→ 確定：仍要下載\n" +
       "→ 取消：回去檢查（試試換 key 色重新去背，或換來源圖）",
@@ -3371,7 +3459,7 @@ async function downloadZip() {
   }
   if (oversizeNames.length > 0) {
     const ok = confirm(
-      `⚠ ${oversizeNames.join("、")} 超過 1MB（LINE 單張上限）。\n\n` +
+      `${oversizeNames.join("、")} 超過 1MB（LINE 單張上限）。\n\n` +
       "→ 確定：仍要下載\n→ 取消：中止",
     );
     if (!ok) return;
@@ -3407,7 +3495,7 @@ async function downloadStickersOnly() {
   if (!anyTransparent) {
     const key = chromaKeyColor();
     const proceed = confirm(
-      `⚠ 還沒去背！下載的 PNG 都是${key.label}（chroma-key 用的 ${key.hex}），貼到任何地方都會看到色塊。\n\n` +
+      `還沒去背！下載的 PNG 都是${key.label}（chroma-key 用的 ${key.hex}），貼到任何地方都會看到色塊。\n\n` +
       "→ 確定：先去背再下載（推薦）— 我會自動執行去背\n" +
       `→ 取消：硬要下載${key.label}版本`,
     );
@@ -3484,7 +3572,7 @@ function buildReadmeText(camp, count = 8) {
   const campSection = camp
     ? `
 
-★ 對準 LINE 特輯活動：${camp.fullName}
+* 對準 LINE 特輯活動：${camp.fullName}
 =================================
 這組貼圖的 prompt 已經依照「${camp.fullName}」的徵稿規則調整。
 記得在 LINE Creators Market 投稿時做這件事：
@@ -3620,7 +3708,7 @@ function buildCampaignCard(camp) {
   if (camp === null) {
     btn.dataset.cid = "";
     btn.innerHTML = `
-      <div class="name">🎲 自由模式</div>
+      <div class="name">自由模式</div>
       <div class="blurb">不對準特定活動，用一般 prompt</div>
       <div class="deadline">永遠可用</div>
     `;
@@ -3644,7 +3732,7 @@ function buildCampaignCard(camp) {
       ? `<div class="expired-badge">已過期・僅供把玩</div>`
       : "";
     btn.innerHTML = `
-      <div class="name">${escapeHtml(camp.label)}${expired ? " 🕰" : ""}</div>
+      <div class="name">${escapeHtml(camp.label)}</div>
       <div class="blurb">${escapeHtml(camp.blurb)}</div>
       <div class="deadline ${deadlineCls}">${escapeHtml(deadlineLabel)}</div>
       ${expiredBadge}
@@ -3706,16 +3794,16 @@ function refreshCampaignActive() {
   campaignActive.hidden = false;
   campaignActive.classList.toggle("is-expired", expired);
   const expiredWarn = expired
-    ? `<div class="expired-warn">⚠ 此活動已於 ${escapeHtml(camp.submitDeadline)} 截止徵稿 — 仍可用此 prompt 產出貼圖把玩 / 留念，但 LINE 不再收稿到這個特輯。</div>`
+    ? `<div class="expired-warn">此活動已於 ${escapeHtml(camp.submitDeadline)} 截止徵稿 — 仍可用此 prompt 產出貼圖把玩 / 留念，但 LINE 不再收稿到這個特輯。</div>`
     : "";
   campaignActive.innerHTML = `
     ${expiredWarn}
-    <strong>📌 已對準：${escapeHtml(camp.fullName)}${expired ? " 🕰" : ""}</strong><br>
+    <strong>已對準：${escapeHtml(camp.fullName)}</strong><br>
     ${expired
       ? `(已過期，原投稿 tag 為「<strong>${escapeHtml(camp.submitTag)}</strong>」)`
       : `投稿時 LINE 編輯器選 →「<strong>${escapeHtml(camp.submitTag)}</strong>」`}<br>
     投稿截止：${escapeHtml(camp.submitDeadline)}・Banner 期：${escapeHtml(camp.bannerPeriod)}<br>
-    <a href="${escapeAttr(camp.articleUrl)}" target="_blank" rel="noopener">📄 看完整徵稿規則</a>
+    <a href="${escapeAttr(camp.articleUrl)}" target="_blank" rel="noopener">看完整徵稿規則</a>
   `;
 }
 
@@ -3811,7 +3899,7 @@ themeGenBtn?.addEventListener("click", async () => {
   }
   themeGenBtn.disabled = true;
   themeGenStatus.hidden = false;
-  themeGenStatus.textContent = "✨ AI 想中…";
+  themeGenStatus.textContent = "AI 想中…";
   try {
     const tsToken = await awaitTurnstileToken();
     const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
@@ -3844,7 +3932,7 @@ themeGenBtn?.addEventListener("click", async () => {
     while (cfg.length < SLOT_COUNT) cfg.push(null);
     renderSlotGrid(cfg);
     themeGenStatus.textContent =
-      `✓ 填入：${phrases.slice(0, SLOT_COUNT).join(" / ")}`;
+      `已填入：${phrases.slice(0, SLOT_COUNT).join(" / ")}`;
     setTimeout(() => { themeGenStatus.hidden = true; }, 8000);
   } catch (err) {
     themeGenStatus.textContent = `失敗：${err.message}`;
@@ -3885,11 +3973,11 @@ function buildSlotCell(idx, slotValue) {
 
   const sel = document.createElement("select");
   sel.className = "slot-select";
-  sel.appendChild(new Option("🎲 隨機", "__random__"));
+  sel.appendChild(new Option("隨機", "__random__"));
   poolCache.items.forEach((p) =>
     sel.appendChild(new Option(p.label, `preset:${p.id}`)),
   );
-  sel.appendChild(new Option("✏️ 自訂…", "__custom__"));
+  sel.appendChild(new Option("自訂…", "__custom__"));
   cell.appendChild(sel);
 
   const customInput = document.createElement("input");
@@ -3985,7 +4073,7 @@ function refreshSlotStatus() {
     if (typeof s.action === "string" && s.action) withAction += 1;
   }
   if (pinned === 0 && custom === 0) {
-    slotStatusText.textContent = "🎲 目前：9 格短語全隨機（從內建 50 句抽）";
+    slotStatusText.textContent = "目前：9 格短語全隨機（從內建 50 句抽）";
     return;
   }
   const parts = [];
@@ -3994,7 +4082,7 @@ function refreshSlotStatus() {
   const remain = SLOT_COUNT - pinned - custom;
   if (remain > 0) parts.push(`其他 ${remain} 格隨機`);
   if (withAction > 0) parts.push(`${withAction} 格附動作描述`);
-  slotStatusText.textContent = `🎨 你挑了：${parts.join("、")}`;
+  slotStatusText.textContent = `你挑了：${parts.join("、")}`;
 }
 
 async function copyPromptToGemini() {
@@ -4028,7 +4116,7 @@ async function copyPromptToGemini() {
     savePromptRecord(prompt).catch(() => {});
     await navigator.clipboard.writeText(prompt);
     slotsCopyStatus.textContent =
-      "✓ 已複製！到 Gemini／ChatGPT 時：先上傳你的參考圖，再貼這段 prompt（沒附圖 prompt 不會套用到你的角色）。";
+      "已複製！到 Gemini／ChatGPT 時：先上傳你的參考圖，再貼這段 prompt（沒附圖 prompt 不會套用到你的角色）。";
   } catch (err) {
     console.error(err);
     slotsCopyStatus.textContent = `複製失敗：${err.message}`;
@@ -4083,7 +4171,7 @@ async function renderPromptHistory() {
     copyBtn.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(r.prompt);
-        showToast("✓ prompt 已複製（記得先在 Gemini 附上參考圖）");
+        showToast("prompt 已複製（記得先在 Gemini 附上參考圖）");
       } catch {
         window.prompt("手動複製：", r.prompt);
       }
@@ -4091,7 +4179,7 @@ async function renderPromptHistory() {
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "ghost";
-    delBtn.textContent = "🗑";
+    delBtn.innerHTML = '<svg class="icon-14"><use href="#i-trash"/></svg>';
     delBtn.addEventListener("click", async () => {
       await idbDelFrom("prompts", r.id);
       renderPromptHistory();
@@ -4109,7 +4197,7 @@ async function renderPhraseSetSelect() {
   if (!sel) return;
   const all = (await idbAllFrom("phraseSets")).sort((a, b) => b.ts - a.ts);
   sel.innerHTML = "";
-  sel.appendChild(new Option("📁 載入短語組…", ""));
+  sel.appendChild(new Option("載入短語組…", ""));
   for (const p of all) sel.appendChild(new Option(p.name, p.id));
 }
 
@@ -4125,7 +4213,7 @@ $("phrase-set-save")?.addEventListener("click", async () => {
     ts: Date.now(),
   });
   await renderPhraseSetSelect();
-  showToast(`✓ 已存短語組「${name.trim()}」`);
+  showToast(`已存短語組「${name.trim()}」`);
 });
 
 $("phrase-set-select")?.addEventListener("change", async (e) => {
@@ -4134,7 +4222,7 @@ $("phrase-set-select")?.addEventListener("change", async (e) => {
   const set = await idbGetFrom("phraseSets", id);
   if (set) {
     renderSlotGrid(set.cfg);
-    showToast(`✓ 已載入短語組「${set.name}」— 記得按「儲存」套用`);
+    showToast(`已載入短語組「${set.name}」— 記得按「儲存」套用`);
   }
   e.target.value = "";
 });
@@ -4165,7 +4253,7 @@ $("style-save-btn")?.addEventListener("click", async () => {
   await renderSavedStyles();
   styleHintSel.value = `saved:${text}`;
   $("style-custom-wrap").hidden = true;
-  showToast("✓ 已收藏到「我的風格」");
+  showToast("已收藏到「我的風格」");
 });
 
 // ------------------------------------------------------------------
@@ -4215,7 +4303,7 @@ async function exportVault() {
   const blob = await zip.generateAsync({ type: "blob" });
   const stamp = new Date().toISOString().slice(0, 10);
   triggerDownload(blob, `sticker-studio-vault-${stamp}.zip`);
-  showToast(`✓ 已匯出整庫（${manifest.generations.length} 張 grid、${manifest.projects.length} 個專案）`);
+  showToast(`已匯出整庫（${manifest.generations.length} 張 grid、${manifest.projects.length} 個專案）`);
 }
 
 async function importVault(file) {
@@ -4294,7 +4382,7 @@ async function importVault(file) {
   await renderSavedStyles();
   rebuildFontSelect();
   showToast(
-    `✓ 匯入完成：grid +${counts.grids}、專案 +${counts.projects}、Library +${counts.library}、字型 +${counts.fonts}` +
+    `匯入完成：grid +${counts.grids}、專案 +${counts.projects}、Library +${counts.library}、字型 +${counts.fonts}` +
     (counts.skipped ? `（已存在略過 ${counts.skipped}）` : ""),
   );
 }
@@ -4488,6 +4576,7 @@ async function renderStickerLibrary() {
   // Tag filter options rebuild.
   const tagSel = $("sticker-tag-filter");
   if (tagSel) {
+    tagSel.hidden = all.length === 0;
     const tags = [...new Set(all.map((x) => x.tag).filter(Boolean))].sort();
     tagSel.innerHTML = "";
     tagSel.appendChild(new Option("全部 tag", ""));
@@ -4567,13 +4656,13 @@ async function renderStickerLibrary() {
     const mk = (label, title, fn) => {
       const b = document.createElement("button");
       b.type = "button";
-      b.textContent = label;
+      b.innerHTML = label;
       b.title = title;
       b.addEventListener("click", fn);
       bar.appendChild(b);
     };
     mk("＋", "加入貼圖池", () => queuePoolOp(() => appendFinishedSticker(e.id)));
-    mk("🗑", "刪除", async () => {
+    mk('<svg class="icon-14"><use href="#i-trash"/></svg>', "刪除", async () => {
       const refs = await projectsReferencingSticker(e.id);
       const warn = refs.length
         ? `有 ${refs.length} 個專案（${refs.map((p) => p.name || p.id).join("、")}）用到這張成品，刪除後那些格子將無法還原。\n\n仍要刪除？`
@@ -4685,20 +4774,20 @@ function buildHistoryCard(e) {
   const card = document.createElement("div");
   card.className = "history-card";
   if (e.id === state.currentGridId) card.classList.add("selected");
-  const sourceIcon = e.source === "ai" ? "🪄" : "📤";
+  const sourceIcon = e.source === "ai" ? "AI" : "上傳";
   const styleLabel = e.metadata?.styleHint || e.metadata?.fileName ||
     (e.source === "byog" ? "BYOG" : "?");
   const displayName = e.name || `${e.source === "ai" ? "AI" : "BYOG"} ${shortStamp(e.timestamp)}`;
   card.innerHTML = `
-    <div class="history-card-badges">${sourceIcon}${e.starred ? " ⭐" : ""}</div>
+    <div class="history-card-badges">${sourceIcon}${e.starred ? ' <svg class="icon-12"><use href="#i-star-fill"/></svg>' : ""}</div>
     <img alt="" />
     <div class="history-card-name" title="${escapeHtmlSafe(displayName)}">${escapeHtmlSafe(displayName)}</div>
     <div class="history-card-meta">${escapeHtmlSafe(String(styleLabel).slice(0,18))} · ${escapeHtmlSafe(relativeTime(e.timestamp))}</div>
     <div class="history-card-actions">
       <button class="act-load" title="載入（取代目前貼圖池）">↻</button>
       <button class="act-add" title="加入貼圖池（湊 16/24/32/40 張大套組）">＋</button>
-      <button class="act-star" title="${e.starred ? "取消收藏" : "收藏"}">${e.starred ? "⭐" : "☆"}</button>
-      <button class="act-delete" title="刪除">🗑</button>
+      <button class="act-star" title="${e.starred ? "取消收藏" : "收藏"}"><svg class="icon-14"><use href="${e.starred ? "#i-star-fill" : "#i-star"}"/></svg></button>
+      <button class="act-delete" title="刪除"><svg class="icon-14"><use href="#i-trash"/></svg></button>
     </div>`;
   const cardImg = card.querySelector("img");
   cardImg.src = URL.createObjectURL(e.thumbnailBlob);
@@ -4754,7 +4843,7 @@ async function renderCurrentGridUi() {
   currentGridArea.hidden = false;
   currentGridEmpty.hidden = true;
   currentGridImg.src = URL.createObjectURL(e.gridBlob);
-  currentGridSourceBadge.textContent = e.source === "ai" ? "🪄 AI 生成" : "📤 自上傳";
+  currentGridSourceBadge.textContent = e.source === "ai" ? "AI 生成" : "自上傳";
   currentGridName.value = e.name || "";
   currentGridName.placeholder = e.metadata?.styleHint || e.metadata?.fileName || "(未命名 — 點此重命名)";
   const meta = [];
@@ -4762,7 +4851,7 @@ async function renderCurrentGridUi() {
   if (e.metadata?.styleHint) meta.push(e.metadata.styleHint);
   if (e.metadata?.campaign) meta.push(e.metadata.campaign);
   currentGridTime.textContent = meta.join(" · ");
-  currentGridStarBtn.textContent = e.starred ? "⭐ 已收藏" : "☆ 收藏";
+  currentGridStarBtn.textContent = e.starred ? "已收藏" : "收藏";
 }
 currentGridName?.addEventListener("change", async (ev) => {
   if (!state.currentGridId) return;
