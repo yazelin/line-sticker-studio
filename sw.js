@@ -13,13 +13,14 @@
 //   - Google Fonts:          stale-while-revalidate (fallback = system font)
 // VERSION only matters when the precache FILE LIST changes (add/remove
 // files) — content updates flow through network-first automatically.
-const VERSION = "v1";
+const VERSION = "v2"; // v2: + privacy.html
 const PRECACHE = `lss-precache-${VERSION}`;
 const RUNTIME = "lss-runtime";
 
 const PRECACHE_URLS = [
   "./",
   "./index.html",
+  "./privacy.html",
   "./app.js",
   "./styles.css",
   "./vendor/jszip.min.js",

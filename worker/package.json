@@ -5,9 +5,11 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "secret": "wrangler secret put VERTEX_API_KEY"
+    "secret": "wrangler secret put VERTEX_API_KEY",
+    "test": "node test-credits.mjs"
   },
   "devDependencies": {
     "wrangler": "^3.99.0"
-  }
+  },
+  "type": "module"
 }

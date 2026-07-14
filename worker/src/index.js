@@ -29,10 +29,11 @@ function genaiCall(env, model) {
   };
 }
 
-// Daily AI-generation quota per client IP. Tweak freely — only place to
-// change it. Counter resets at UTC midnight. Bumped from 3 → 5 because
-// Taiwan carriers share IPs via CGNAT, so 3 was too tight in practice.
-const DAILY_LIMIT = 5;
+// Daily FREE AI-generation quota per client IP. Tweak freely — only place
+// to change it. Counter resets at UTC midnight. Down from 5 → 1 with the
+// launch of prepaid credits (credits.js): the free slot is a daily taste,
+// BYOG stays unlimited, paying users spend their balance first.
+const DAILY_LIMIT = 1;
 
 // Cloudflare Turnstile site key — public, safe to expose. Frontend reads
 // this via GET /config so we don't hardcode it twice. Pair this with
@@ -114,6 +115,14 @@ const ACTION_FOR_PHRASE = {
 // Frontend reads this via GET /campaigns; expired entries are flagged
 // but kept in the list (frontend decides how to display them).
 import CAMPAIGNS from "./campaigns.json";
+import {
+  mintCodes,
+  normalizeUid,
+  readBalance,
+  redeemCode,
+  refundCredit,
+  spendCredit,
+} from "./credits.js";
 
 function campaignsManifest() {
   return CAMPAIGNS.map((c) => ({
@@ -675,8 +684,11 @@ export default {
       }
       if (url.pathname === "/quota") {
         // Public — returns this caller's IP-keyed daily quota. No auth.
+        // With ?uid= it also reports that uid's prepaid credit balance.
         const ip = getClientIp(request);
         const quota = await readQuota(env, ip);
+        const uid = normalizeUid(url.searchParams.get("uid"));
+        if (uid) quota.balance = await readBalance(env, uid);
         return json({ quota }, 200, cors);
       }
       if (url.pathname === "/config") {
@@ -809,6 +821,53 @@ export default {
       );
     }
 
+    // POST /redeem — exchange a prepaid code for credits on a uid.
+    // Deliberately works even while AI_DISABLED=1 (redeeming ≠ generating).
+    // No Turnstile: codes are unguessable, worst case is free KV reads.
+    if (url.pathname === "/redeem") {
+      if (!env.QUOTA) return json({ error: "kv unavailable" }, 500, cors);
+      let body;
+      try { body = await request.json(); } catch { body = {}; }
+      const uid = normalizeUid(body?.uid);
+      if (!uid) return json({ error: "uid required" }, 400, cors);
+      const result = await redeemCode(env, body?.code, uid);
+      if (!result.ok) {
+        const msg = {
+          "bad code format": "兌換碼格式不對，長這樣：LSS-XXXX-XXXX-XXXX-XXXX",
+          "unknown code": "查無此兌換碼，請確認有沒有打錯。",
+          "code already redeemed": "這組兌換碼已經用過了。",
+        }[result.error] || result.error;
+        return json({ error: result.error, message: msg }, 400, cors);
+      }
+      return json(
+        { ok: true, credits: result.credits, balance: result.balance },
+        200, cors,
+      );
+    }
+
+    // POST /admin/make-codes — mint prepaid codes. Same Bearer ADMIN_TOKEN
+    // as /admin/reset-quota. Body { credits, count? }. This is also the
+    // integration point for the payment webhook (ai-workshop-backend calls
+    // this after a successful charge, then emails the code to the buyer).
+    if (url.pathname === "/admin/make-codes") {
+      const auth = request.headers.get("Authorization") || "";
+      const m = auth.match(/^Bearer\s+(.+)$/i);
+      const provided = m ? m[1].trim() : "";
+      if (!env.ADMIN_TOKEN || !provided || provided !== env.ADMIN_TOKEN) {
+        return json({ error: "forbidden" }, 403, cors);
+      }
+      if (!env.QUOTA) return json({ error: "kv unavailable" }, 500, cors);
+      let body;
+      try { body = await request.json(); } catch { body = {}; }
+      const credits = parseInt(body?.credits, 10);
+      const count = Math.min(parseInt(body?.count, 10) || 1, 100);
+      if (!Number.isFinite(credits) || credits < 1 || credits > 10000) {
+        return json({ error: "credits must be 1-10000" }, 400, cors);
+      }
+      const codes = await mintCodes(env, credits, count);
+      return json({ ok: true, credits, codes }, 200, cors);
+    }
+
     // POST /prompt — returns the assembled prompt without calling Gemini.
     // Useful for letting the user copy the prompt into gemini.google.com
     // themselves to save the operator's API budget.
@@ -929,27 +988,49 @@ export default {
 
     // Everything from here on must release the lock — wrap in try/finally.
     try {
-      // ---- Daily quota gate ----
-      const quotaBefore = await readQuota(env, ip);
-      if (quotaBefore.used >= quotaBefore.limit) {
-        return json(
-          {
-            error: "daily quota exceeded",
-            hint: "byog",
-            quota: quotaBefore,
-            message: `今天的 ${quotaBefore.limit} 次 AI 生成已用完。可以複製 prompt 自己到 Gemini 跑、再丟回來走 BYOG 路徑（免費、不限次）。明天 UTC 0 點重置。`,
-          },
-          429,
-          cors,
-        );
+      // ---- Charge: prepaid credits first, then the daily free slot ----
+      // Both are pre-emptive (charge BEFORE the upstream call) — the key
+      // defense against spam-clicking: a flood of simultaneous requests
+      // each charges before any of them returns, so the excess ones hit
+      // the gate below without ever calling Vertex. Refunded via refund()
+      // on known-recoverable errors.
+      const uid = normalizeUid(body?.uid);
+      let balanceAfter = uid ? await spendCredit(env, uid) : null;
+      const charge = balanceAfter !== null ? "credit" : "daily";
+      let usedAfter;
+      if (charge === "daily") {
+        const quotaBefore = await readQuota(env, ip);
+        if (quotaBefore.used >= quotaBefore.limit) {
+          return json(
+            {
+              error: "daily quota exceeded",
+              hint: "byog",
+              quota: { ...quotaBefore, balance: 0 },
+              message: `今天的 ${quotaBefore.limit} 次免費 AI 生成已用完。可以輸入兌換碼加值繼續生成，或複製 prompt 自己到 Gemini 跑、再丟回來走 BYOG 路徑（免費、不限次）。明天 UTC 0 點重置。`,
+            },
+            429,
+            cors,
+          );
+        }
+        usedAfter = await bumpQuota(env, ip);
+      } else {
+        usedAfter = (await readQuota(env, ip)).used;
       }
 
-      // ---- Pre-emptive bump (charge BEFORE the upstream call) ----
-      // This is the key defense against spam-clicking: a flood of
-      // simultaneous requests each bumps before any of them returns,
-      // so the 6th-Nth request hits the quota gate above without ever
-      // calling Vertex. Refunded below on known-recoverable errors.
-      const usedAfter = await bumpQuota(env, ip);
+      const quotaNow = () => ({
+        used: usedAfter,
+        limit: DAILY_LIMIT,
+        ...(uid ? { balance: charge === "credit" ? balanceAfter : 0 } : {}),
+      });
+
+      const refund = async () => {
+        if (charge === "credit") {
+          balanceAfter = await refundCredit(env, uid);
+        } else {
+          await decrementQuota(env, ip);
+          usedAfter = Math.max(0, usedAfter - 1);
+        }
+      };
 
       const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
       // Pick the 9 phrases ONCE per request, then use the same set both
@@ -985,12 +1066,12 @@ export default {
             body: JSON.stringify({ prompt: chosenPrompt, reference_image: imageBase64, timeout: 360 }),
           });
         } catch (err) {
-          await decrementQuota(env, ip);
+          await refund();
           return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
         }
         if (!upstream.ok) {
           const text = await upstream.text();
-          await decrementQuota(env, ip);
+          await refund();
           return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
         }
         const data = await upstream.json();
@@ -998,12 +1079,12 @@ export default {
         if (!data?.success || imgs.length === 0) {
           // Browser-side failure (content blocked / no image / upload glitch).
           // Not a billed call — it's our own service — so refund the quota.
-          await decrementQuota(env, ip);
+          await refund();
           return json(
             {
               error: data?.error || "no image in response",
               detail: String(data?.message || data?.detail || "").slice(0, 500),
-              quota: { used: Math.max(0, usedAfter - 1), limit: DAILY_LIMIT },
+              quota: quotaNow(),
             },
             502,
             cors,
@@ -1046,7 +1127,7 @@ export default {
           });
         } catch (err) {
           // Network-level failure → didn't hit Vertex. Refund.
-          await decrementQuota(env, ip);
+          await refund();
           return json(
             { error: "upstream fetch failed", detail: String(err) },
             502,
@@ -1060,7 +1141,7 @@ export default {
           // 4xx (bad request format), but mostly these are 502/503/524 on
           // their side. Refund either way; if a 4xx pattern develops we'd
           // see it in logs and tighten our prompt-builder.
-          await decrementQuota(env, ip);
+          await refund();
           return json(
             {
               error: "upstream error",
@@ -1083,7 +1164,7 @@ export default {
             {
               error: "no image in response",
               raw: JSON.stringify(data).slice(0, 1500),
-              quota: { used: usedAfter, limit: DAILY_LIMIT },
+              quota: quotaNow(),
             },
             502,
             cors,
@@ -1102,7 +1183,7 @@ export default {
           slots: nine,
           campaign: campaign || null,
           lang: lang || null,
-          quota: { used: usedAfter, limit: DAILY_LIMIT },
+          quota: quotaNow(),
         },
         200,
         cors,

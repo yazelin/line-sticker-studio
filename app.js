@@ -209,11 +209,11 @@ const I18N = {
     "ko": "캐릭터 이미지 한 장 업로드 → AI가 스티커 팩 생성 → ZIP 다운로드 → LINE Creators Market 업로드",
   },
   step_a_title: {
-    "zh-TW": "主路徑 A：上傳角色圖讓 AI 產（每天 5 次免費，免登入）",
-    "zh-CN": "主路径 A：上传角色图让 AI 产（每天 5 次免费，免登入）",
-    "en": "Path A: upload a character image, let AI generate (5 free/day, no login)",
-    "ja": "メイン A: キャラ画像をアップ、AI に生成させる（1日5回無料、ログイン不要）",
-    "ko": "경로 A: 캐릭터 업로드 → AI 생성 (하루 5회 무료, 로그인 불필요)",
+    "zh-TW": "主路徑 A：上傳角色圖讓 AI 產（每天 1 次免費，兌換碼可加值，免登入）",
+    "zh-CN": "主路径 A：上传角色图让 AI 产（每天 1 次免费，兑换码可加值，免登入）",
+    "en": "Path A: upload a character image, let AI generate (1 free/day, top up with a redeem code, no login)",
+    "ja": "メイン A: キャラ画像をアップ、AI に生成させる（1日1回無料、引換コードで追加、ログイン不要）",
+    "ko": "경로 A: 캐릭터 업로드 → AI 생성 (하루 1회 무료, 교환 코드로 충전, 로그인 불필요)",
   },
   step_b_title: {
     "zh-TW": "替代路徑 B：直接上傳 3×3 圖（省 API、自己跑 Gemini）",
@@ -450,10 +450,23 @@ function broadcastQuota(quota) {
   }
 }
 
+// Anonymous identity for prepaid credits — a random uuid pinned in
+// localStorage. No login; clearing site data forfeits the balance, which
+// the redeem UI warns about.
+const UID_KEY = "lss_uid";
+function getUid() {
+  let uid = localStorage.getItem(UID_KEY);
+  if (!uid) {
+    uid = crypto.randomUUID();
+    localStorage.setItem(UID_KEY, uid);
+  }
+  return uid;
+}
+
 async function refreshQuota() {
   const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
   try {
-    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/quota");
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/quota?uid=" + encodeURIComponent(getUid()));
     if (!resp.ok) throw new Error(`/quota ${resp.status}`);
     const data = await resp.json();
     auth.quota = data.quota;
@@ -813,7 +826,8 @@ async function generateAll() {
   if (!state.sourceImage) return;
   const styleErr = syncConfigFromControls();
   if (styleErr) { alert(styleErr); return; }
-  if (auth.quota && auth.quota.used >= auth.quota.limit) {
+  if (auth.quota && !(auth.quota.balance > 0)
+      && auth.quota.used >= auth.quota.limit) {
     showQuotaExceededModal();
     return;
   }
@@ -920,7 +934,7 @@ async function generateAll() {
       setGenProgress(0, err.detail || "AI 生成暫停中，請走 BYOG 自己跑。");
       showByogHandoff(err.detail);
     } else if (err.code === "QUOTA_EXCEEDED") {
-      setGenProgress(0, `今日 ${auth.quota?.limit || 5} 次免費 AI 生成已用完`);
+      setGenProgress(0, `今日 ${auth.quota?.limit || 1} 次免費 AI 生成已用完 — 點右上角額度標籤可輸入兌換碼`);
       showQuotaExceededModal();
     } else if (err.code === "INFLIGHT") {
       setGenProgress(0, "上一個生成還在跑，等它完成或失敗再點。狂點不會更快、會被擋。");
@@ -944,7 +958,10 @@ async function generateAll() {
 }
 
 function showQuotaExceededModal() {
-  showByogHandoff(`今天的 ${auth.quota?.limit || 5} 次 AI 生成已用完`);
+  showByogHandoff(
+    `今天的 ${auth.quota?.limit || 1} 次免費 AI 生成已用完` +
+    "（有兌換碼？點右上角額度標籤加值）",
+  );
 }
 
 // Hand off to the free BYOG path. The critical, easy-to-miss step is that the
@@ -985,7 +1002,7 @@ async function fetchGrid(apiUrl, body) {
   const sendOnce = async (turnstileToken) => fetch(apiUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, turnstileToken }),
+    body: JSON.stringify({ ...body, uid: getUid(), turnstileToken }),
   });
 
   let resp = await sendOnce(body.turnstileToken);
@@ -4403,11 +4420,49 @@ function refreshAuthUi() {
   if (!authQuotaEl) return;
   if (auth.quota) {
     const remain = Math.max(0, auth.quota.limit - auth.quota.used);
-    authQuotaEl.textContent = `今日 AI 剩 ${remain} / ${auth.quota.limit}`;
-    authQuotaEl.classList.toggle("full", remain === 0);
+    const balance = auth.quota.balance || 0;
+    authQuotaEl.textContent = balance > 0
+      ? `額度 ${balance}｜免費 ${remain}/${auth.quota.limit}`
+      : `今日免費 AI 剩 ${remain} / ${auth.quota.limit}`;
+    authQuotaEl.classList.toggle("full", remain === 0 && balance === 0);
   } else {
-    authQuotaEl.textContent = "今日 AI 剩 — / —";
+    authQuotaEl.textContent = "今日免費 AI 剩 — / —";
   }
+}
+
+// Redeem flow — native prompt keeps it dependency-free; the chip is the
+// single entry point and the 429 modal points here.
+async function promptRedeemCode() {
+  const raw = prompt(
+    "輸入兌換碼（LSS-XXXX-XXXX-XXXX-XXXX）：\n\n" +
+    "額度綁定這個瀏覽器（不用註冊）。清除網站資料會失去額度，請別在無痕視窗兌換。",
+  );
+  if (!raw || !raw.trim()) return;
+  const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+  try {
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: raw.trim(), uid: getUid() }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      alert(data.message || data.error || "兌換失敗，請再試一次。");
+      return;
+    }
+    if (auth.quota) auth.quota.balance = data.balance;
+    refreshAuthUi();
+    broadcastQuota(auth.quota);
+    alert(`兌換成功！加值 ${data.credits} 次，目前額度 ${data.balance} 次。`);
+  } catch (err) {
+    alert("兌換失敗（網路問題），請再試一次。");
+    console.warn("redeem failed:", err);
+  }
+}
+
+if (authQuotaEl) {
+  authQuotaEl.title = "點我輸入兌換碼加值";
+  authQuotaEl.addEventListener("click", promptRedeemCode);
 }
 
 // ------------------------------------------------------------------
