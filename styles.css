@@ -62,6 +62,7 @@ html, body {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 600;
+  cursor: pointer; /* clickable — opens the redeem-code prompt */
 }
 .auth-quota.full { color: #c0392b; font-weight: 700; }
 

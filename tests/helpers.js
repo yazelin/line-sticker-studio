@@ -25,8 +25,8 @@ export async function stubExternal(page) {
   await ctx.route(`${WORKER_ORIGIN}/**`, (r) =>
     r.fulfill({ status: 500, json: { error: "unexpected worker call in test" } }));
   // Worker API endpoints the frontend fetches at boot.
-  await ctx.route(`${WORKER_ORIGIN}/quota`, (r) =>
-    r.fulfill({ json: { quota: { used: 0, limit: 5 } } }));
+  await ctx.route(`${WORKER_ORIGIN}/quota*`, (r) =>
+    r.fulfill({ json: { quota: { used: 0, limit: 1, balance: 0 } } }));
   await ctx.route(`${WORKER_ORIGIN}/config`, (r) =>
     r.fulfill({ json: { turnstileSiteKey: null } }));
   await ctx.route(`${WORKER_ORIGIN}/campaigns`, (r) =>

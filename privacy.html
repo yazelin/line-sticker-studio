@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>隱私與資料使用說明 — LINE 貼圖工作室</title>
+  <link rel="icon" href="favicon.ico" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif;
+      max-width: 42rem; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+      line-height: 1.75; color: #333;
+    }
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.05rem; margin-top: 2rem; }
+    a { color: #06c755; }
+    li { margin: 0.3rem 0; }
+    .back { display: inline-block; margin-bottom: 1.5rem; }
+    footer { margin-top: 3rem; font-size: 0.85rem; color: #888; }
+  </style>
+</head>
+<body>
+  <a class="back" href="./">← 回貼圖工作室</a>
+  <h1>隱私與資料使用說明</h1>
+  <p>這個工具的原則:能在你的瀏覽器本地做的事,就不送出去。以下照實說明每一種資料去了哪裡。</p>
+
+  <h2>完全在你的瀏覽器本地處理(不經過任何伺服器)</h2>
+  <ul>
+    <li>去背(chroma-key)、3×3 切圖、尺寸調整(370×320 / main / tab)</li>
+    <li>文字圖層編輯、貼圖池與專案管理、ZIP 打包下載</li>
+    <li>BYOG 路徑(自己產好 3×3 圖上傳切圖)全程本地,離線(PWA)也能用</li>
+    <li>專案進度存在瀏覽器的 IndexedDB / localStorage,不上傳</li>
+  </ul>
+
+  <h2>AI 生成時,你的圖會去哪裡</h2>
+  <p>只有按下「AI 生成」時,你上傳的角色參考圖會經由作者的轉發伺服器(Cloudflare Worker → 自架生成服務)送往 Google Gemini 產圖。轉發服務只做轉發與配額控管,不把你的圖片另存建庫、不作生成以外的用途;Google 端的處理適用 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google 隱私權政策</a>。不想讓圖片離開瀏覽器,可改走 BYOG 路徑。</p>
+
+  <h2>配額與額度紀錄什麼</h2>
+  <ul>
+    <li>每日免費配額按 IP 計數(Cloudflare 提供的連線 IP),只存「日期+次數」,36 小時自動清除</li>
+    <li>付費額度綁定一組隨機匿名代號(存在你瀏覽器的 localStorage),伺服器只記「代號+剩餘次數」;沒有帳號、姓名、email,我們不知道代號是誰</li>
+    <li>清除瀏覽器網站資料會失去匿名代號與剩餘額度,兌換前請留意</li>
+    <li>人機驗證由 Cloudflare Turnstile 提供,適用 <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">Cloudflare 隱私權政策</a></li>
+  </ul>
+
+  <h2>沒有的東西</h2>
+  <ul>
+    <li>沒有帳號系統、不收集個資、沒有廣告追蹤與第三方分析</li>
+    <li>作者伺服器不留存你的圖片,也看不到你做了什麼貼圖</li>
+  </ul>
+
+  <h2>問題與聯絡</h2>
+  <p>對資料使用有疑問,開 <a href="https://github.com/yazelin/line-sticker-studio/issues" target="_blank" rel="noopener">GitHub Issue</a> 或透過 <a href="https://www.facebook.com/yaze.lin.gm" target="_blank" rel="noopener">Facebook</a> 聯繫。</p>
+
+  <footer>最後更新:2026-07-15 · <a href="https://github.com/yazelin/line-sticker-studio" target="_blank" rel="noopener">原始碼公開</a>,說明與實作對得上,歡迎檢查。</footer>
+</body>
+</html>
