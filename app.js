@@ -3491,7 +3491,7 @@ async function downloadZip() {
   zip.file("main.png", await canvasToBlob(makeMainImage(composeTile(mainTile)), "image/png"));
   zip.file("tab.png", await canvasToBlob(makeTabImage(composeTile(tabTile)), "image/png"));
 
-  zip.file("README.txt", buildReadmeText(currentCampaign(), includedTiles.length));
+  zip.file("README.txt", buildReadmeText(currentCampaign(), includedTiles.length, (themeInput && themeInput.value.trim()) || ""));
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
   triggerDownload(zipBlob, `line-stickers-${Date.now()}.zip`);
@@ -3584,8 +3584,17 @@ function triggerDownload(blob, filename) {
   reader.readAsDataURL(blob);
 }
 
-function buildReadmeText(camp, count = 8) {
+function buildReadmeText(camp, count = 8, theme = "") {
   const key = chromaKeyColor();
+  // 標題/說明依賴主題內容，工具無法憑空知道。有打主題就生成品可照貼，
+  // 沒打就退回範本（留 <> 讓使用者替換）。
+  const t = theme.trim();
+  const titleLine = t
+    ? `${t}貼圖`.slice(0, 40)
+    : `〈主題〉貼圖・〈情緒關鍵字〉  ← 沒填 AI 主題，這欄請自己改`;
+  const descLine = t
+    ? `一組「${t}」主題貼圖，涵蓋問候、心情、吐槽等日常對話，聊天室秒回專用。`.slice(0, 160)
+    : `一組〈主題〉貼圖，涵蓋問候、心情、吐槽等日常，聊天室秒回專用。  ← 沒填 AI 主題，這欄請自己改`;
   const campSection = camp
     ? `
 
@@ -3594,18 +3603,23 @@ function buildReadmeText(camp, count = 8) {
 這組貼圖的 prompt 已經依照「${camp.fullName}」的徵稿規則調整。
 記得在 LINE Creators Market 投稿時做這件事：
 
-  → 編輯貼圖時，「販售資訊」區段選擇：「${camp.submitTag}」
+  → 編輯貼圖時，「販售資訊」區段的「特輯企劃」勾選：「${camp.submitTag}」→ 參加
 
 關鍵期程：
   - 投稿截止：${camp.submitDeadline}
   - Banner 曝光期：${camp.bannerPeriod}
 
-完整規則：
+完整規則（以這頁為準，下面清單只是常見雷）：
   ${camp.articleUrl}
 
-注意：通用條件 — 必須是新貼圖（不能改舊的）、限台灣居民、
-靜態 ≥30 TWD（眼淚製造機 ≥40 TWD、台味 NT$60 固定價）、
-動態 ≥60 TWD、不可含個人姓名/暱稱/個人照。
+投稿前逐項核對（各特輯條件不同，務必開上面連結確認）：
+  [ ] 必須是「全新貼圖」——販售中的貼圖不能用更新的方式參加。
+  [ ] 至少 8 張（含）以上要與該特輯主題相關。
+  [ ] 「販售地區」要含台灣（部分特輯硬性要求，例如「放手去DRAW」）。
+  [ ] 貼圖不可含姓名或暱稱；多數特輯也排除個人照片。
+  [ ] 訊息貼圖／隨你填貼圖多數特輯不可參加；部分連全螢幕／特效也排除。
+  [ ] 若參加「AI 相關獎項」（如放手去DRAW 的 AI 哎唷不錯獎），
+      「是否使用AI」必須勾「使用AI」——本工具產出本來就要勾（見下）。
 `
     : "";
 
@@ -3624,12 +3638,42 @@ ZIP 內容
 ------------
 - 如果你在前端按過「全部去背」，就是透明 PNG (LINE 要求)。
 - 如果跳過去背，每張會是${key.label}（${key.hex}）；上架前一定要去背，不然會被 LINE 退件。
+
+是否使用 AI（必填欄位，別漏）
+----------------------------
+這組圖是本工具用 AI 生成的，「販售資訊 → 是否使用AI」一定要勾「使用AI」。
+勾「未使用AI」等於申報不實，會被退件；要參加 AI 獎項也非勾不可。
 ${campSection}
+投稿要打的文字（下面就是成品，直接複製貼上）
+--------------------------------------------
+以下四欄工具已幫你填好，照貼即可（標題/說明可再潤）：
+
+  標題（上限 40 字）
+${titleLine}
+
+  貼圖說明（上限 160 字）
+${descLine}
+
+  版權（上限 50 字）
+© 2026 yazelin（林亞澤）
+
+  創意人名稱
+English：yazelin
+中文：林亞澤
+
+下面兩項是選單/選填，不是打字欄：
+  - 是否使用AI：選「使用AI」
+  - 販售地區：至少含「台灣」
+  - 可確認作品的網址（選填）：有作品集/粉專就貼上，審核加分。
+
+※ 版權欄是著作權標示、不是貼圖本體；含姓名/暱稱的是「圖上有字」才卡審核，
+  版權欄填自己名字沒問題。
+
 上架步驟
 --------
 1. 到 https://creator.line.me/zh-hant/ 用 LINE 帳號登入。
 2. 點「新增貼圖 → Sticker」。
-3. 填寫貼圖名稱、簡介、版權所有人等基本資料。
+3. 填寫上面「投稿要打的文字」各欄，並確認「是否使用AI = 使用AI」。
 4. 進到「貼圖管理 → 圖片編輯」，把 ZIP 裡的檔案分別上傳到對應欄位。
 5. 全部上傳完成後送出申請，LINE 通常 1～7 天回覆審核結果。
 
@@ -3638,6 +3682,7 @@ ${campSection}
 - 肖像權：使用他人照片但沒授權。
 - 商標：包含 LINE 自家或其他品牌的圖案、字體。
 - 文字過多：貼圖以圖為主，整片都是字會被退。
+- 是否使用AI 漏勾或勾錯：AI 生成卻標未使用，會退件。
 - 解析度不符：本工具已輸出標準規格 (370×320)，正常情況不會有此問題。
 
 祝上架順利！
