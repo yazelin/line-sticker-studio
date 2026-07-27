@@ -1,5 +1,23 @@
 [
   {
+    "id": "catchphrase_tw",
+    "label": "台灣人的口頭禪",
+    "fullName": "台灣人的口頭禪貼圖特輯",
+    "submitTag": "台灣人的口頭禪貼圖特輯",
+    "submitDeadline": "2026-08-30",
+    "bannerPeriod": "2026/09/02 ~ 09/15",
+    "articleUrl": "https://creator-mag-tw.weblog.to/archives/30678332.html",
+    "blurb": "日常口頭禪、地區用語、台語客語的在地語感。最少 8 張要跟口頭禪有關。",
+    "forceWithText": true,
+    "forceStyleHint": null,
+    "phrasePoolOverride": [
+      "是在哈囉", "真的假的", "傻眼", "母湯", "拍謝",
+      "好家在", "也太扯", "不然呢", "沒在怕", "我就爛",
+      "隨便啦", "呷飽沒", "蛤", "累了", "走啦"
+    ],
+    "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「台灣人的口頭禪貼圖特輯」: Every single cell MUST display one everyday Taiwanese catchphrase in Traditional Chinese characters, rendered LARGE and clearly readable at chat-thumbnail size. The character's facial expression and body language must match the tone of that specific phrase — exasperated, deadpan, delighted, resigned, defiant. Aim for the casual local texture of daily conversation in Taiwan: the phrases people actually type in LINE, including Taiwanese-Hokkien-flavored ones. Keep the text placement clean and never covering the face. NO names, NO nicknames, NO real-person likeness anywhere."
+  },
+  {
     "id": "no_text",
     "label": "無字浮誇",
     "fullName": "無字浮誇貼圖特輯",
