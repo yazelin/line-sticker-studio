@@ -115,6 +115,7 @@ const ACTION_FOR_PHRASE = {
 // Frontend reads this via GET /campaigns; expired entries are flagged
 // but kept in the list (frontend decides how to display them).
 import CAMPAIGNS from "./campaigns.json";
+import { isWideSheet } from "./sheet.js";
 import {
   mintCodes,
   normalizeUid,
@@ -440,7 +441,15 @@ ${style}
 
 This style applies to ALL 9 tiles. If the user provided a photo and the style says "anime / 3D / pixel / watercolor / etc", TRANSFORM the photo into that medium — do NOT keep it photo-realistic. Color palette, line work, shading technique should all follow the STYLE block, not the source.`;
 
-  return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square chat stickers featuring the same character from the reference image. Each tile is ONE complete chat sticker.
+  // 畫布比例是模型自己挑的，挑到寬幅（實測 1.78～1.90）時它會把 9 句話攤成
+  // 4～5 欄 × 3 列、還重複語句填滿多出來的格子，前端切九格就全錯位。原本
+  // 「ONE seamless 1:1 image」躺在這份一萬七千字 prompt 的最後一段，壓不住
+  // 開頭那句。把畫布規則提到第一行後實測 5/5 都是正方 3×3。
+  return `OUTPUT CANVAS (HIGHEST PRIORITY): produce a SQUARE 1:1 image — width and height must be equal.
+The sheet is EXACTLY 3 columns × 3 rows = 9 cells. Never 4 columns, never 5 columns, never a wide/landscape canvas.
+Do not repeat any phrase to fill extra space.
+
+Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square chat stickers featuring the same character from the reference image. Each tile is ONE complete chat sticker.
 
 ${styleBlock}
 
@@ -1058,46 +1067,51 @@ export default {
         // that uploads the reference image. Payload {prompt, reference_image,
         // timeout}; response {success, images:["data:...base64"], error}.
         const editUrl = `${env.GEMINI_WEB_BASE_URL.replace(/\/+$/, "")}/api/edit`;
-        let upstream;
-        try {
-          upstream = await fetch(editUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY || "" },
-            body: JSON.stringify({ prompt: chosenPrompt, reference_image: imageBase64, timeout: 360 }),
-          });
-        } catch (err) {
-          await refund();
-          return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
-        }
-        if (!upstream.ok) {
-          const text = await upstream.text();
-          await refund();
-          return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
-        }
-        const data = await upstream.json();
-        const imgs = data?.images || [];
-        if (!data?.success || imgs.length === 0) {
-          // Browser-side failure (content blocked / no image / upload glitch).
-          // Not a billed call — it's our own service — so refund the quota.
-          await refund();
-          return json(
-            {
-              error: data?.error || "no image in response",
-              detail: String(data?.message || data?.detail || "").slice(0, 500),
-              quota: quotaNow(),
-            },
-            502,
-            cors,
-          );
-        }
-        const img = imgs[0];
-        if (img.includes(",")) {
-          const [hdr, b64] = img.split(",", 2);
-          outMime = (hdr.match(/data:([^;]+)/) || [])[1] || "image/png";
-          outData = b64;
-        } else {
-          outMime = "image/png";
-          outData = img;
+        // 寬幅畫布 = 排版壞掉（模型會攤成 4～5 欄並重複語句），重打一次。
+        // 直式畫布仍是 3×3、切九格照樣正確，所以只擋寬的。
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let upstream;
+          try {
+            upstream = await fetch(editUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY || "" },
+              body: JSON.stringify({ prompt: chosenPrompt, reference_image: imageBase64, timeout: 360 }),
+            });
+          } catch (err) {
+            await refund();
+            return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
+          }
+          if (!upstream.ok) {
+            const text = await upstream.text();
+            await refund();
+            return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
+          }
+          const data = await upstream.json();
+          const imgs = data?.images || [];
+          if (!data?.success || imgs.length === 0) {
+            // Browser-side failure (content blocked / no image / upload glitch).
+            // Not a billed call — it's our own service — so refund the quota.
+            await refund();
+            return json(
+              {
+                error: data?.error || "no image in response",
+                detail: String(data?.message || data?.detail || "").slice(0, 500),
+                quota: quotaNow(),
+              },
+              502,
+              cors,
+            );
+          }
+          const img = imgs[0];
+          if (img.includes(",")) {
+            const [hdr, b64] = img.split(",", 2);
+            outMime = (hdr.match(/data:([^;]+)/) || [])[1] || "image/png";
+            outData = b64;
+          } else {
+            outMime = "image/png";
+            outData = img;
+          }
+          if (!isWideSheet(outData) || attempt === 2) break;
         }
       } else {
         const { url: apiUrl, headers: apiHeaders } = genaiCall(env, chosenModel);

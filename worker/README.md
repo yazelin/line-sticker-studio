@@ -134,6 +134,22 @@ This is best-effort, not a guarantee — Gemini still occasionally produces
 borderline output. But it dramatically reduces the rejected-resubmission
 churn vs prompts that don't say "no logos".
 
+## Square-canvas guard (3×3, never 4 or 5 columns)
+
+Gemini picks the output canvas ratio itself. When it picks a wide one
+(measured 1.78 / 1.90) it reflows the 9 cells into 4–5 columns × 3 rows and
+repeats phrases to fill the extra space — the frontend's nine-way split then
+lands on the wrong tiles. Two defences:
+
+1. `buildPrompt()` opens with an `OUTPUT CANVAS (HIGHEST PRIORITY)` block
+   demanding a square 1:1 sheet and exactly 3 columns. The old
+   "ONE seamless 1:1 image" line was buried ~17k characters deep and lost to
+   the opening instruction. Measured after the move: 9/9 square 3×3 sheets.
+2. `isWideSheet()` (`src/sheet.js`) reads the PNG header of the returned
+   image; anything wider than 1.15:1 is retried once. Portrait sheets are
+   left alone — those still come back as a correct 3×3, just with taller
+   cells. Self-check: `node worker/test-sheet-aspect.mjs`.
+
 ## Cost & rate-limit notes
 
 Gemini image preview models charge per image — at the time of writing,
