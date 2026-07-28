@@ -121,6 +121,20 @@ header h1 {
   font-size: 0.95rem;
 }
 
+.proof {
+  color: var(--muted);
+  margin: 0.55rem auto 0;
+  max-width: 36rem;
+  font-size: 0.9rem;
+}
+.proof a {
+  color: var(--line-green-hover);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-green-tint);
+}
+.proof a:hover { border-bottom-color: var(--line-green); }
+
 .howto {
   display: flex;
   align-items: stretch;
@@ -1336,6 +1350,8 @@ button, .primary, .ghost {
    工作區內容第一屏就是工具,不用每個分頁都先滑過行銷區。 */
 body[data-tab="assets"] header .tagline,
 body[data-tab="pack"] header .tagline,
+body[data-tab="assets"] header .proof,
+body[data-tab="pack"] header .proof,
 body[data-tab="assets"] header .howto,
 body[data-tab="pack"] header .howto,
 body[data-tab="assets"] header .howto-byog-hint,
