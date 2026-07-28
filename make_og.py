@@ -192,26 +192,48 @@ def main() -> None:
     # Text column
     d = ImageDraw.Draw(canvas)
     text_x = GRID_X + GRID_SIZE + 70
-    title_font = ImageFont.truetype(FONT_BLACK, 78)
-    tag_font = ImageFont.truetype(FONT_REG, 26)
+    title_font = ImageFont.truetype(FONT_BLACK, 76)
+    tag_font = ImageFont.truetype(FONT_REG, 25)
     cta_font = ImageFont.truetype(FONT_BOLD, 26)
     pill_font = ImageFont.truetype(FONT_BOLD, 22)
+    step_font = ImageFont.truetype(FONT_BOLD, 21)
 
     # LINE pill mark
     pill_w, pill_h = 86, 38
-    d.rounded_rectangle((text_x, 130, text_x + pill_w, 130 + pill_h),
+    d.rounded_rectangle((text_x, 96, text_x + pill_w, 96 + pill_h),
                         radius=pill_h // 2, fill=LINE_GREEN)
-    d.text((text_x + 14, 132), "LINE", fill=(255, 255, 255), font=pill_font)
-    d.text((text_x + pill_w + 12, 130), "貼圖製造機",
+    d.text((text_x + 14, 98), "LINE", fill=(255, 255, 255), font=pill_font)
+    d.text((text_x + pill_w + 12, 96), "貼圖製造機",
            fill=TEXT, font=ImageFont.truetype(FONT_BOLD, 32))
 
     # Big title
-    d.text((text_x, 198), "1 張角色圖", fill=TEXT, font=title_font)
-    d.text((text_x, 282), "→ 一整套貼圖", fill=LINE_GREEN_DEEP, font=title_font)
+    d.text((text_x, 164), "1 張角色圖", fill=TEXT, font=title_font)
+    d.text((text_x, 246), "→ 8–40 張套組", fill=LINE_GREEN_DEEP, font=title_font)
+
+    # Studio workflow steps — the three tabs of the app
+    step_y = 352
+    step_h = 42
+    x = text_x
+    for i, label in enumerate(["企劃生圖", "素材庫", "組包出貨"]):
+        bb = d.textbbox((0, 0), label, font=step_font)
+        lw = bb[2] - bb[0]
+        sw = lw + 32
+        filled = i == 0
+        d.rounded_rectangle((x, step_y, x + sw, step_y + step_h),
+                            radius=step_h // 2,
+                            fill=LINE_GREEN if filled else (255, 255, 255),
+                            outline=LINE_GREEN, width=2)
+        d.text((x + 16 - bb[0], step_y + (step_h - (bb[3] - bb[1])) // 2 - bb[1]),
+               label, fill=(255, 255, 255) if filled else LINE_GREEN_DEEP,
+               font=step_font)
+        x += sw
+        if i < 2:
+            d.text((x + 8, step_y + 8), "→", fill=MUTED, font=step_font)
+            x += 34
 
     # Tagline
-    d.text((text_x, 388), "AI 60 秒產 8 張同角色不同表情", fill=MUTED, font=tag_font)
-    d.text((text_x, 422), "下載 ZIP 直接上架 LINE Creators Market", fill=MUTED, font=tag_font)
+    d.text((text_x, 418), "AI 生圖 + 素材庫 + 專案自動存檔", fill=MUTED, font=tag_font)
+    d.text((text_x, 450), "文字圖層改字零成本，ZIP 直接上架", fill=MUTED, font=tag_font)
 
     # CTA pill
     cta_text = "點開上傳一張角色圖 →"
@@ -221,7 +243,7 @@ def main() -> None:
     pad_x, pad_y = 28, 16
     pw = text_w + pad_x * 2
     ph = text_h + pad_y * 2
-    py = 482
+    py = 502
     d.rounded_rectangle((text_x, py, text_x + pw, py + ph),
                         radius=ph // 2, fill=LINE_GREEN)
     d.text((text_x + pad_x - bbox[0], py + pad_y - bbox[1]),
