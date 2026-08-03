@@ -1912,7 +1912,7 @@ function refreshTileDialog() {
     const keyLabel = CHROMA_KEYS[tile.cleanParams.key]?.label || tile.cleanParams.key;
     const t = tile.cleanParams.tune;
     const tuneLabel = typeof t === "object" ? "自訂細調"
-      : ({ safe: "保守", balanced: "標準", aggressive: "積極" }[t] || t);
+    : ({ safe: "保守", balanced: "標準（細節優先）", aggressive: "積極", continuous: "連續清理（背景優先）" }[t] || t);
     tileDialogStatus.textContent = `狀態：已去背（${keyLabel}・${tuneLabel}）`;
   } else {
     tileDialogStatus.textContent = "狀態：原始切圖（未去背）";
@@ -1963,13 +1963,13 @@ function advProfileFromSliders() {
 function syncAdvSliders(tile) {
   const base = (tile.cleanParams && typeof tile.cleanParams.tune === "object")
     ? tile.cleanParams.tune
-    : { ...resolveChromaTuneProfile(tileTuneSelect?.value || "balanced"), erode: 1 };
+    : { ...resolveChromaTuneProfile(tileTuneSelect?.value || "balanced") };
   const set = (id, v) => { const el = $(id); if (el && v != null) el.value = v; };
   set("adv-hard", base.hard);
   set("adv-soft", base.soft);
   set("adv-minkey", base.minKey);
   set("adv-dominance", base.dominance);
-  set("adv-erode", base.erode ?? 1);
+  set("adv-erode", base.erode ?? 0);
 }
 
 let _advTimer = null;
@@ -2338,7 +2338,7 @@ $("tile-single-dl-btn")?.addEventListener("click", async () => {
   const tile = editorTile();
   if (!tile) return;
   const blob = await canvasToBlob(composeTile(tile), "image/png");
-  triggerDownload(blob, `sticker-${editorInPool() ? String(tileDialogIdx + 1).padStart(2, "0") : "edit"}.png`);
+  await triggerDownload(blob, `sticker-${editorInPool() ? String(tileDialogIdx + 1).padStart(2, "0") : "edit"}.png`);
 });
 const tileShareBtn = $("tile-share-btn");
 tileShareBtn?.addEventListener("click", async () => {
@@ -2353,7 +2353,7 @@ tileShareBtn?.addEventListener("click", async () => {
     try { await navigator.share({ files: [file] }); return; }
     catch (err) { if (err?.name === "AbortError") return; }
   }
-  triggerDownload(blob, file.name);
+  await triggerDownload(blob, file.name);
 });
 
 function toggleIncluded(idx) {
@@ -2718,14 +2718,14 @@ async function downloadOriginalGrid() {
     alert("沒有原始 grid PNG — 先生成一次。");
     return;
   }
-  triggerDownload(state.lastGridPng, `gemini-grid-${Date.now()}.png`);
+  await triggerDownload(state.lastGridPng, `gemini-grid-${Date.now()}.png`);
 }
 
 async function downloadSingleTile(idx) {
   const tile = state.tiles[idx];
   if (!tile) return;
   const blob = await canvasToBlob(composeTile(tile), "image/png");
-  triggerDownload(blob, `sticker-${String(idx + 1).padStart(2, "0")}.png`);
+  await triggerDownload(blob, `sticker-${String(idx + 1).padStart(2, "0")}.png`);
 }
 
 // Share ONE sticker through the OS share sheet (mobile: straight into
@@ -2748,7 +2748,7 @@ async function shareSingleTile(idx) {
       console.warn("share failed, falling back to download", err);
     }
   }
-  triggerDownload(blob, file.name);
+  await triggerDownload(blob, file.name);
 }
 
 // Quick popup: let user override the phrase before re-calling Gemini.
@@ -3025,23 +3025,15 @@ function detectBgType(orig, w, h) {
   return result;
 }
 
-// `minKey` is the minimum key-channel intensity required for a pixel to
-// be considered "on the bg plate". Set low (40-60) so that DARK key
-// color (i.e. character shadow cast onto the backdrop — magenta/green
-// bg dimmed by the character blocking studio light) also enters the
-// chroma key path. Without this, the AI's stray shadow pixels stayed
-// as a dark magenta/green halo glued to the character's feet.
-//
-// The dominance ratio (key channel must exceed non-key by 1.45-1.9×)
-// is what protects character pixels from over-removal — even with a
-// low minKey, skin/red/orange/yellow tones don't satisfy the ratio.
-//
-// "aggressive" removes shadows fully; "balanced" leaves a faint trace;
-// "safe" preserves more shadow as semi-transparent. Default = balanced.
+// Default matte is strict/pureKey: remove clearly key-coloured pixels while
+// preserving mixed foreground edges such as text outlines and hair. The
+// continuous variant remains available as an explicit alternative for images
+// whose background is more important than preserving uncertain edge pixels.
 const CHROMA_TUNE_PROFILES = {
-  safe: { hard: 0.32, soft: 0.12, minKey: 60, maxOther: 100, dominance: 1.9 },
-  balanced: { hard: 0.25, soft: 0.05, minKey: 50, maxOther: 110, dominance: 1.7 },
-  aggressive: { hard: 0.20, soft: 0.04, minKey: 40, maxOther: 125, dominance: 1.45 },
+  safe: { mode: "strict", hard: 0.32, soft: 0.12, minKey: 60, maxOther: 100, dominance: 1.9, erode: 0 },
+  balanced: { mode: "strict", hard: 0.25, soft: 0.05, minKey: 50, maxOther: 110, dominance: 1.7, erode: 0 },
+  aggressive: { mode: "strict", hard: 0.20, soft: 0.04, minKey: 40, maxOther: 125, dominance: 1.45, erode: 1 },
+  continuous: { mode: "continuous", hard: 0.25, soft: 0.05, minKey: 50, maxOther: 110, dominance: 1.7, erode: 0 },
 };
 
 function resolveChromaTuneProfile(tune = "balanced") {
@@ -3050,43 +3042,45 @@ function resolveChromaTuneProfile(tune = "balanced") {
   return CHROMA_TUNE_PROFILES[tune] || CHROMA_TUNE_PROFILES.balanced;
 }
 
-// Chroma-key out a selected green/magenta background with anti-alias cleanup.
-// Per-pixel key-color score → linear ramp to alpha.
-// Then subtract key-color contribution from semi-transparent edge pixels.
+// Chroma-key out a selected green/magenta background with selectable matte.
+// Strict/pureKey is the default because it preserves uncertain foreground
+// edges. Continuous is intentionally opt-in for stronger whole-image cleanup.
 async function chromaKeyColorOut(srcCanvas, w, h, orig, outlineStyle, tune = "balanced", key = "green") {
   const TUNE = resolveChromaTuneProfile(tune);
   const keyName = normalizeChromaKey(key);
+  const mode = TUNE.mode || "strict";
+  const customTune = tune && typeof tune === "object";
+  const minNorm = Math.max(0, Math.min(1, (Number(TUNE.minKey ?? 50) - 20) / 70));
+  const dominanceNorm = Math.max(0, Math.min(1, (Number(TUNE.dominance ?? 1.7) - 1.2) / 1));
+  const balancedNorm = ((50 - 20) / 70 + (1.7 - 1.2)) / 2;
+  const conservativeNorm = customTune
+    ? Math.max(0, Math.min(1, ((minNorm + dominanceNorm) / 2 - balancedNorm) / (1 - balancedNorm)))
+    : 0;
+  const despillStrength = 1 - 0.35 * conservativeNorm;
   const keyScore = (r, g, b) =>
     keyName === "magenta"
       ? (Math.min(r, b) - g) / 255
       : (g - Math.max(r, b)) / 255;
-  const isPureKey = (r, g, b) => {
-    if (keyName === "magenta") {
-      const magenta = Math.min(r, b);
-      return (
-        magenta >= TUNE.minKey &&
-        g <= TUNE.maxOther &&
-        r >= g * TUNE.dominance &&
-        b >= g * TUNE.dominance
-      );
-    }
-    return (
-      g >= TUNE.minKey &&
+  const isPureKey = (r, g, b) => keyName === "magenta"
+    ? Math.min(r, b) >= TUNE.minKey &&
+      g <= TUNE.maxOther &&
+      r >= g * TUNE.dominance &&
+      b >= g * TUNE.dominance
+    : g >= TUNE.minKey &&
       r <= TUNE.maxOther &&
       b <= TUNE.maxOther &&
       g >= r * TUNE.dominance &&
-      g >= b * TUNE.dominance
-    );
-  };
+      g >= b * TUNE.dominance;
+  const clampByte = (v) => Math.max(0, Math.min(255, Math.round(v)));
   const despill = (i, r, g, b) => {
     if (keyName === "magenta") {
-      od[i] = g;
-      od[i + 2] = g;
+      od[i] = clampByte(r + (g - r) * despillStrength);
+      od[i + 2] = clampByte(b + (g - b) * despillStrength);
     } else {
-      od[i + 1] = (r + b) >> 1;
+      const target = (r + b) / 2;
+      od[i + 1] = clampByte(g + (target - g) * despillStrength);
     }
   };
-
   const out = document.createElement("canvas");
   out.width = w; out.height = h;
   const outCtx = out.getContext("2d");
@@ -3094,77 +3088,48 @@ async function chromaKeyColorOut(srcCanvas, w, h, orig, outlineStyle, tune = "ba
   const od = outData.data;
 
   const total = w * h;
-  let nKeyed = 0, nKept = 0, nPartial = 0;
+  let nKeyed = 0, nKept = 0, nPartial = 0, nSpillCleaned = 0;
   for (let i = 0; i < orig.length; i += 4) {
     const r = orig[i], g = orig[i + 1], b = orig[i + 2];
+    const sourceAlpha = orig[i + 3];
     const score = keyScore(r, g, b);
     const pureKey = isPureKey(r, g, b);
-    let alpha = 255;
-    if (pureKey && score > TUNE.hard) {
-      alpha = 0;
+    let keyAlpha = 255;
+    if (mode === "continuous") {
+      if (score > TUNE.hard) keyAlpha = 0;
+      else if (score > TUNE.soft) {
+        keyAlpha = Math.round(255 * (TUNE.hard - score) / Math.max(0.01, (TUNE.hard - TUNE.soft)));
+      }
+    } else if (pureKey && score > TUNE.hard) {
+      keyAlpha = 0;
     } else if (pureKey && score > TUNE.soft) {
-      alpha = Math.round(255 * (TUNE.hard - score) / Math.max(0.01, (TUNE.hard - TUNE.soft)));
+      keyAlpha = Math.round(255 * (TUNE.hard - score) / Math.max(0.01, (TUNE.hard - TUNE.soft)));
     }
+    keyAlpha = Math.max(0, Math.min(255, keyAlpha));
+    const alpha = Math.round((keyAlpha * sourceAlpha) / 255);
     od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
+
+    const keyDominant = keyName === "magenta"
+      ? r > g && b > g
+      : g > r && g > b;
+    if (alpha > 0 && keyDominant) {
+      despill(i, r, g, b);
+      if (keyAlpha < 255 && (mode === "continuous" || pureKey)) nSpillCleaned++;
+    }
     if (alpha === 0) nKeyed++;
     else if (alpha === 255) nKept++;
     else nPartial++;
-
-    // Despill only pixels confidently associated with the key color.
-    if (alpha > 0 && pureKey) despill(i, r, g, b);
   }
-  console.log(`[chroma-key:${keyName}] keyed=${(100*nKeyed/total).toFixed(0)}% kept=${(100*nKept/total).toFixed(0)}% partial=${(100*nPartial/total).toFixed(0)}%`);
+  console.log(
+    `[chroma-key:${keyName}] keyed=${(100*nKeyed/total).toFixed(0)}% ` +
+    `kept=${(100*nKept/total).toFixed(0)}% partial=${(100*nPartial/total).toFixed(0)}% ` +
+    `despilled=${nSpillCleaned}`,
+  );
 
-  let nSpillCleaned = 0;
-  const baseAlpha = new Uint8Array(total);
-  for (let i = 0, p = 0; i < od.length; i += 4, p++) baseAlpha[p] = od[i + 3];
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const p = y * w + x;
-      if (baseAlpha[p] === 0) continue;
-      let touchesEmpty = false;
-      for (let dy = -1; dy <= 1 && !touchesEmpty; dy++) {
-        for (let dx = -1; dx <= 1 && !touchesEmpty; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          if (baseAlpha[(y + dy) * w + (x + dx)] === 0) touchesEmpty = true;
-        }
-      }
-      if (!touchesEmpty) continue;
-      const i = p * 4;
-      const r = od[i], g = od[i + 1], b = od[i + 2];
-      const score = keyScore(r, g, b);
-      const lightSpill = keyName === "magenta"
-        ? (
-            score > Math.max(TUNE.soft, 0.08) &&
-            r >= 90 &&
-            b >= 90 &&
-            g >= 50 &&
-            r > g * 1.05 &&
-            b > g * 1.05
-          )
-        : (
-            score > Math.max(TUNE.soft, 0.08) &&
-            r >= 90 &&
-            b >= 70 &&
-            g > r * 1.05 &&
-            g > b * 1.05
-          );
-      if (!lightSpill) continue;
-      despill(i, r, g, b);
-      od[i + 3] = Math.min(
-        od[i + 3],
-        Math.round(255 * (TUNE.hard - score) / Math.max(0.01, (TUNE.hard - TUNE.soft))),
-      );
-      nSpillCleaned++;
-    }
-  }
-  console.log(`[chroma-key:${keyName}] cleaned ${nSpillCleaned} light spill pixels`);
-
-  // Edge cleanup pass: any partial-alpha pixel adjacent to a fully-
-  // transparent neighbor gets killed too. Eliminates the 1-2 px green
-  // halo that survives despill — the fringe pixels nearest the bg
-  // always carry the most key-color contamination.
-  const ERODE_PASSES = TUNE.erode ?? 1;
+  // Optional hard erosion is now reserved for Aggressive/custom tuning.
+  // Standard and Safe keep the newly decontaminated partial-alpha pixels;
+  // deleting them was the main source of stair-stepped silhouettes.
+  const ERODE_PASSES = TUNE.erode ?? 0;
   let nEroded = 0;
   for (let pass = 0; pass < ERODE_PASSES; pass++) {
     // Snapshot alpha so a single pass doesn't cascade-erode
@@ -3494,7 +3459,7 @@ async function downloadZip() {
   zip.file("README.txt", buildReadmeText(currentCampaign(), includedTiles.length, (themeInput && themeInput.value.trim()) || ""));
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  triggerDownload(zipBlob, `line-stickers-${Date.now()}.zip`);
+  await triggerDownload(zipBlob, `line-stickers-${Date.now()}.zip`);
 }
 
 // "Download all 9 transparent stickers" — for users who don't want to
@@ -3534,7 +3499,7 @@ async function downloadStickersOnly() {
     zip.file(name, blob);
   }
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  triggerDownload(zipBlob, `transparent-stickers-${Date.now()}.zip`);
+  await triggerDownload(zipBlob, `transparent-stickers-${Date.now()}.zip`);
 }
 
 function makeMainImage(srcCanvas) {
@@ -3568,20 +3533,48 @@ function canvasToBlob(canvas, type) {
 }
 
 // iOS Safari doesn't reliably honor the `download` attribute on blob: URLs
-// (it just navigates/previews instead of saving) — WebKit bug 167341. A
-// data: URL is honored much more reliably, so read the blob through
-// FileReader first. Works the same on desktop, just one extra hop.
+// (it just navigates/previews instead of saving). Use data: there; desktop
+// browsers keep the synchronous blob: path so large ZIP downloads don't add
+// an unnecessary FileReader scheduling race.
+function isIOSWebKit() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
 function triggerDownload(blob, filename) {
-  const reader = new FileReader();
-  reader.onload = () => {
+  return new Promise((resolve, reject) => {
     const a = document.createElement("a");
-    a.href = reader.result;
     a.download = filename;
     document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
-  reader.readAsDataURL(blob);
+
+    const finish = () => {
+      a.remove();
+      resolve();
+    };
+
+    if (!isIOSWebKit()) {
+      const url = URL.createObjectURL(blob);
+      a.href = url;
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        finish();
+      }, 100);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => {
+      a.remove();
+      reject(reader.error || new Error("無法準備下載檔案"));
+    };
+    reader.onload = () => {
+      a.href = reader.result;
+      a.click();
+      setTimeout(finish, 100);
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 function buildReadmeText(camp, count = 8, theme = "") {
@@ -4364,7 +4357,7 @@ async function exportVault() {
   zip.file("manifest.json", JSON.stringify(manifest, null, 2));
   const blob = await zip.generateAsync({ type: "blob" });
   const stamp = new Date().toISOString().slice(0, 10);
-  triggerDownload(blob, `sticker-studio-vault-${stamp}.zip`);
+  await triggerDownload(blob, `sticker-studio-vault-${stamp}.zip`);
   showToast(`已匯出整庫（${manifest.generations.length} 張 grid、${manifest.projects.length} 個專案）`);
 }
 
@@ -4968,7 +4961,7 @@ currentGridStarBtn?.addEventListener("click", async () => {
 currentGridDownloadBtn?.addEventListener("click", async () => {
   if (!state.currentGridId) return;
   const e = await idbGetGeneration(state.currentGridId);
-  triggerDownload(e.gridBlob, `grid-${e.name || e.id}.png`);
+  await triggerDownload(e.gridBlob, `grid-${e.name || e.id}.png`);
 });
 currentGridDeleteBtn?.addEventListener("click", async () => {
   if (!state.currentGridId) return;
