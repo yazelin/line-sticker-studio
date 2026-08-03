@@ -561,8 +561,9 @@
       <label class="bg-tune">強度
         <select id="tile-tune-select" aria-label="這張的去背強度">
           <option value="safe">保守</option>
-          <option value="balanced" selected>標準</option>
+          <option value="balanced" selected>標準（細節優先）</option>
           <option value="aggressive">積極</option>
+          <option value="continuous">連續清理（背景優先）</option>
         </select>
       </label>
       <button type="button" class="primary" id="tile-clean-btn">重新去背（只這張）</button>
@@ -587,7 +588,7 @@
           <input type="range" id="adv-dominance" min="1.2" max="2.2" step="0.05" value="1.7" />
         </label>
         <label class="text-mini">邊緣侵蝕
-          <input type="range" id="adv-erode" min="0" max="3" step="1" value="1" />
+          <input type="range" id="adv-erode" min="0" max="3" step="1" value="0" />
         </label>
         <button type="button" class="ghost" id="tile-adv-reset">回檔位預設</button>
       </div>
@@ -688,8 +689,9 @@
         去背強度
         <select id="bg-tune-select" aria-label="去背強度">
           <option value="safe">保守</option>
-          <option value="balanced" selected>標準</option>
+          <option value="balanced" selected>標準（細節優先）</option>
           <option value="aggressive">積極</option>
+          <option value="continuous">連續清理（背景優先）</option>
         </select>
       </label>
       <label class="bg-tune" for="bg-key-select" title="選擇這批圖使用的 chroma key 背景色">
@@ -729,6 +731,11 @@
     </button>
     <p class="hint mini" style="margin-top:0.4rem">
       不打算上架 LINE？這個按鈕一次給你 9 張獨立透明 PNG，貼到 Slack 表情、Discord emoji、Notion、PPT、Word、IG 限動，都行。檔名會帶上每張的短語，方便日後找。
+    </p>
+    <p class="hint mini" style="margin-top:0.4rem">
+      想先看貼在對話裡長什麼樣子？拿一張透明 PNG 丟進
+      <a href="https://yazelin.github.io/line-chat-maker/" target="_blank" rel="noopener">LINE 對話製造機</a>
+      ——按「貼圖」加一則訊息、點圖上傳，就能看到實際大小和襯在對話背景上的效果。那個工具完全在你自己的瀏覽器跑，圖不會上傳到任何地方。
     </p>
 
     <details class="tip-box">
@@ -804,7 +811,8 @@
 <footer>
   <p class="footer-tools">
     同作者其他小工具：
-    <a href="https://yazelin.github.io/emoji-slot-machine/" target="_blank" rel="noopener">表情拉霸機</a>
+    <a href="https://yazelin.github.io/line-chat-maker/" target="_blank" rel="noopener">LINE 對話製造機</a>
+    · <a href="https://yazelin.github.io/emoji-slot-machine/" target="_blank" rel="noopener">表情拉霸機</a>
   </p>
   <p>
     Made by <a href="https://github.com/yazelin" target="_blank" rel="noopener">yazelin</a>

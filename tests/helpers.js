@@ -75,6 +75,79 @@ export async function makeGridBuffer(page, bg = "green", size = 1024, height = n
   return Buffer.from(dataUrl.split(",")[1], "base64");
 }
 
+// Build the edge case that exposed visible chroma halos in production:
+// an opaque white sticker border pre-composited against the key plate.
+// The two blended rings mimic the several-pixel anti-alias fringe emitted
+// by image generators (and amplified by grid splitting/resampling).
+export async function makeFringedGridBuffer(page, bg = "green", size = 1024) {
+  const dataUrl = await page.evaluate(({ bg, size }) => {
+    const c = document.createElement("canvas");
+    c.width = size; c.height = size;
+    const ctx = c.getContext("2d");
+    const colors = bg === "magenta"
+      ? { plate: "#FF00FF", outer: "rgb(255, 180, 255)", inner: "rgb(255, 220, 255)" }
+      : { plate: "#00FF00", outer: "rgb(180, 255, 180)", inner: "rgb(220, 255, 220)" };
+    ctx.fillStyle = colors.plate;
+    ctx.fillRect(0, 0, size, size);
+    const cell = size / 3;
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const cx = col * cell + cell / 2;
+        const cy = row * cell + cell / 2;
+        for (const [radius, color] of [
+          [0.30, colors.outer],
+          [0.285, colors.inner],
+          [0.27, "#FFFFFF"],
+        ]) {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(cx, cy, cell * radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#404040";
+        ctx.beginPath();
+        ctx.arc(cx, cy, cell * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return c.toDataURL("image/png");
+  }, { bg, size });
+  return Buffer.from(dataUrl.split(",")[1], "base64");
+}
+
+// A low-light key-colour shadow around the subject. It is deliberately below
+// the strict minKey profiles but still visibly leans toward the selected key;
+// the legacy continuous matte should remove its colour cast.
+export async function makeDarkKeyShadowGridBuffer(page, bg = "green", size = 1024) {
+  const dataUrl = await page.evaluate(({ bg, size }) => {
+    const c = document.createElement("canvas");
+    c.width = size; c.height = size;
+    const ctx = c.getContext("2d");
+    const colors = bg === "magenta"
+      ? { plate: "#FF00FF", shadow: "rgb(26, 6, 26)" }
+      : { plate: "#00FF00", shadow: "rgb(6, 26, 6)" };
+    ctx.fillStyle = colors.plate;
+    ctx.fillRect(0, 0, size, size);
+    const cell = size / 3;
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const cx = col * cell + cell / 2;
+        const cy = row * cell + cell / 2;
+        ctx.fillStyle = colors.shadow;
+        ctx.beginPath();
+        ctx.arc(cx, cy, cell * 0.31, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#404040";
+        ctx.beginPath();
+        ctx.arc(cx, cy, cell * 0.20, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return c.toDataURL("image/png");
+  }, { bg, size });
+  return Buffer.from(dataUrl.split(",")[1], "base64");
+}
+
 // Ack the LINE-rules gate (unlocks both upload boxes).
 export async function ackRules(page) {
   const ack = page.locator("#rules-ack");
@@ -110,6 +183,31 @@ export async function transparentPixelCount(page, imgSelector) {
     for (let i = 3; i < d.length; i += 4) if (d[i] === 0) n++;
     return n;
   }, imgSelector);
+}
+
+// Count visible pixels whose RGB still leans toward the selected key color.
+// Transparent pixels are intentionally ignored: their hidden RGB does not
+// render, while even low-alpha colored pixels can form a bright fringe.
+export async function visibleKeySpillPixelCount(page, imgSelector, key) {
+  return page.evaluate(async ({ imgSelector, key }) => {
+    const img = document.querySelector(imgSelector);
+    const bmp = await createImageBitmap(await (await fetch(img.src)).blob());
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(bmp, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let spill = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+      if (a <= 8) continue;
+      const excess = key === "magenta" ? Math.min(r, b) - g : g - Math.max(r, b);
+      // Match the legacy cleaner's lower bound: ≤20/255 is a subtle cast;
+      // anything above it is the clearly visible green/pink fringe we must remove.
+      if (excess > 20) spill++;
+    }
+    return spill;
+  }, { imgSelector, key });
 }
 
 // Expected average red channel of a keyed sticker built from fixture tile

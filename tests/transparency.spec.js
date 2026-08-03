@@ -1,8 +1,9 @@
 // Issue #2 — export-time transparency audit + import-time backdrop check.
 import { test, expect } from "@playwright/test";
 import {
-  stubExternal, makeGridBuffer, ackRules, uploadGrid,
-  transparentPixelCount, captureDownload, loadZip,
+  stubExternal, makeGridBuffer, makeFringedGridBuffer, makeDarkKeyShadowGridBuffer,
+  ackRules, uploadGrid,
+  transparentPixelCount, visibleKeySpillPixelCount, captureDownload, loadZip,
 } from "./helpers.js";
 
 test.beforeEach(async ({ page }) => {
@@ -69,3 +70,23 @@ test("green grid keeps clean path: no warning toast, no opaque confirm", async (
   await captureDownload(page, () => page.locator("#download-zip-btn").click());
   expect(dialogs.filter((m) => m.includes("完全沒有透明背景"))).toHaveLength(0);
 });
+
+for (const key of ["green", "magenta"]) {
+  test(`${key} anti-aliased border leaves no visible key-color fringe`, async ({ page }) => {
+    await uploadGrid(page, await makeFringedGridBuffer(page, key));
+    await page.locator("#bg-remove-btn").click();
+    await expect(page.locator("#bg-progress-text")).toContainText("完成", { timeout: 30_000 });
+
+    const selector = "#stickers-grid .sticker-cell:first-child img";
+    expect(await visibleKeySpillPixelCount(page, selector, key)).toBeLessThan(10);
+  });
+
+  test(`${key} low-light key shadow is decontaminated`, async ({ page }) => {
+    await uploadGrid(page, await makeDarkKeyShadowGridBuffer(page, key));
+    await page.locator("#bg-remove-btn").click();
+    await expect(page.locator("#bg-progress-text")).toContainText("完成", { timeout: 30_000 });
+
+    const selector = "#stickers-grid .sticker-cell:first-child img";
+    expect(await visibleKeySpillPixelCount(page, selector, key)).toBeLessThan(10);
+  });
+}
