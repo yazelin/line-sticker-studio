@@ -319,7 +319,7 @@ function actionFor(slot) {
   }
   const phrase = slot && slot.phrase;
   return ACTION_FOR_PHRASE[phrase]
-    || "expressive sticker pose appropriate for the phrase";
+    || GENERIC_ACTION;
 }
 
 // IMPORTANT: pass `nine` in pre-computed by the caller (NOT internally
@@ -328,6 +328,24 @@ function actionFor(slot) {
 // prompt and the response MUST share the same nine phrases.
 //
 // `nine` shape: array of length 9, each element { phrase: string, action?: string }.
+// actionFor 找不到對照時的通用敘述。無字模式下九格拿到同一句就會長得很像,
+// 所以那條路徑會改用下面這張「每格不同」的清單墊底。
+const GENERIC_ACTION = "expressive sticker pose appropriate for the phrase";
+
+// 無字模式 + 使用者沒填動作時的保底:九種明顯不同的情緒,確保九格不會撞。
+// 前端把「+ 動作」標成無字模式必填,但沒有真的擋,所以後端要自己站得住。
+const FALLBACK_EMOTIONS = [
+  "smiling and waving one hand high",
+  "laughing with head tilted back, eyes closed",
+  "crying with big teardrops, hands near face",
+  "angry with puffed cheeks, arms crossed",
+  "sleepy, yawning with one hand over mouth",
+  "surprised with wide eyes and both hands raised",
+  "confident thumbs-up with a bright grin",
+  "thinking with a finger on chin, looking up",
+  "celebrating with both arms thrown up",
+];
+
 const CHROMA_KEYS = {
   green: {
     name: "green screen",
@@ -408,11 +426,18 @@ function buildPrompt({ nine, styleHint, withText, campaign, lang, chromaKey }) {
       TEXT STYLE: PURE WHITE fill with a thick (5-8px) PURE BLACK outline hugging every glyph, bold rounded sans-serif, readable on any chat background. Place text at the top OR bottom edge of the cell. IMPORTANT: the printed text is an OVERLAY GRAPHIC only — it must NOT change the artwork's art style, medium, or rendering in any way.
       ACTION/POSE: ${action}`;
     }
-    // withText=false: phrase is NOT rendered, but still drives the pose.
-    // Without this, Gemini got no semantic guidance and drew random poses.
+    // withText=false: the phrase NEVER enters the prompt.
+    //
+    // 舊版把短語用引號括起來塞兩次(EMOTION CUE 一次、"conveys the feeling of"
+    // 再一次),再用否定句叫模型不要畫。2026-08-03 實測兩張九宮格 **9/9 格全部
+    // 把那句話印上去**。對生圖模型來說,引號裡的字串就是「要畫的東西」,否定句
+    // 是比字串本身更弱的訊號 —— 同一類問題在畫布欄數那條也發生過。
+    //
+    // 解法是移掉來源:姿勢指引改由英文的 action 單獨負責(`actionFor` 找不到
+    // 使用者填的動作時,會用 phrase→英文動作 的對照表,一樣是英文)。前端在無字
+    // 模式下本來就把「+ 動作」列為必填,語意不會因此變差。
     return `  [${letter}] ${NAMES[i]} cell:
-      EMOTION CUE (do NOT render as text on the sticker — use ONLY as pose / facial-expression guidance): "${phrase}"
-      ACTION/POSE: render a pose + facial expression that clearly conveys the feeling of "${phrase}". ${action}
+      ACTION/POSE: ${action === GENERIC_ACTION ? FALLBACK_EMOTIONS[i] : action}
       ABSOLUTELY NO TEXT, LETTERS, NUMBERS, OR EMOJI on this cell.`;
   }).join("\n");
 
@@ -448,6 +473,8 @@ This style applies to ALL 9 tiles. If the user provided a photo and the style sa
   return `OUTPUT CANVAS (HIGHEST PRIORITY): produce a SQUARE 1:1 image — width and height must be equal.
 The sheet is EXACTLY 3 columns × 3 rows = 9 cells. Never 4 columns, never 5 columns, never a wide/landscape canvas.
 Do not repeat any phrase to fill extra space.
+${withText ? "" : `TEXT (HIGHEST PRIORITY): this is a TEXT-FREE sticker sheet. Do NOT draw any letters, glyphs, words, numbers, emoji, captions, subtitles, speech balloons containing writing, or watermarks in ANY of the 9 cells. Nothing in this prompt is to be printed on the artwork. If a cell feels like it needs a caption, draw the emotion instead.
+`}
 
 Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square chat stickers featuring the same character from the reference image. Each tile is ONE complete chat sticker.
 
@@ -469,7 +496,7 @@ STICKER FRAMING (every tile):
 - No drop shadows, no soft shadows under feet, no contact shadows, no ground shadows, no ambient ${key.name} glow or color cast on the character from the backdrop.
 - Bold, lively poses — readable at chat-thumbnail size (~120×120 px).
 
-CONTENT COMPLIANCE — LINE Creators Market审核 rules. EVERY cell must comply. ANY violation gets the entire pack auto-rejected, costing the operator days of resubmission. Treat every rule below as hard constraints that override style / theme / user preference:
+CONTENT COMPLIANCE — LINE Creators Market 審核 rules. EVERY cell must comply. ANY violation gets the entire pack auto-rejected, costing the operator days of resubmission. Treat every rule below as hard constraints that override style / theme / user preference:
 
 [A] PORTRAIT RIGHTS — no real public figures
 - Do NOT render the character to look recognizably like any real celebrity, KOL, athlete, politician, royalty, religious leader, or other identifiable public figure. If the user's reference image resembles a famous person, deliberately stylize away from that resemblance: change face shape, hair, eye color, age — keep ONLY the user's intent of "a person" and produce a clearly original cartoon character. Better to lose photo-realistic likeness than to accidentally depict, say, a Korean idol or a politician.
