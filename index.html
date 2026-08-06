@@ -90,9 +90,18 @@
   </defs>
 </svg>
 <title>LINE 貼圖製造機｜LINE Sticker Studio</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=M+PLUS+Rounded+1c:wght@500;700;900&display=swap" />
+<style>
+/* 自架字型:Google Fonts CDN 跨域,SW 快取不到 → 離線一定壞。
+   400/500/700 只切這個站用到的字(靜態 UI);900 是貼圖 canvas 用的字重,
+   使用者會打任意文字,所以切到 BIG5 常用字 5,401。重切:pwa-skill/tools/selfhost-font.py */
+@font-face{font-family:"M PLUS Rounded 1c";font-style:normal;font-weight:500;font-display:swap;src:url("assets/fonts/m-plus-rounded-1c-500.woff2") format("woff2")}
+@font-face{font-family:"M PLUS Rounded 1c";font-style:normal;font-weight:700;font-display:swap;src:url("assets/fonts/m-plus-rounded-1c-700.woff2") format("woff2")}
+@font-face{font-family:"M PLUS Rounded 1c";font-style:normal;font-weight:900;font-display:swap;src:url("assets/fonts/m-plus-rounded-1c-900.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/noto-sans-tc-400.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:500;font-display:swap;src:url("assets/fonts/noto-sans-tc-500.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:700;font-display:swap;src:url("assets/fonts/noto-sans-tc-700.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:900;font-display:swap;src:url("assets/fonts/noto-sans-tc-900.woff2") format("woff2")}
+</style>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>

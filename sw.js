@@ -13,7 +13,7 @@
 //   - Google Fonts:          stale-while-revalidate (fallback = system font)
 // VERSION only matters when the precache FILE LIST changes (add/remove
 // files) — content updates flow through network-first automatically.
-const VERSION = "v4"; // v4: privacy.html 補上 manifest + SW 註冊
+const VERSION = "v5"; // v5: 字型自架(拔掉 Google Fonts CDN)
 const PRECACHE = `lss-precache-${VERSION}`;
 const RUNTIME = "lss-runtime";
 
@@ -23,6 +23,13 @@ const PRECACHE_URLS = [
   "./privacy.html",
   "./app.js",
   "./styles.css",
+  "./assets/fonts/m-plus-rounded-1c-500.woff2",
+  "./assets/fonts/m-plus-rounded-1c-700.woff2",
+  "./assets/fonts/noto-sans-tc-400.woff2",
+  "./assets/fonts/noto-sans-tc-500.woff2",
+  "./assets/fonts/noto-sans-tc-700.woff2",
+  // 900 字重(貼圖 canvas 用,含常用字 5,401)故意不進 addAll:那是 1.5MB,
+  // 原子操作失敗會連整個離線殼一起沒掉。它們走同源 network-first,首次算圖就會進快取。
   "./vendor/jszip.min.js",
   "./manifest.json",
   "./favicon.ico",
