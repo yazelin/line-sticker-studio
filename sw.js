@@ -13,7 +13,7 @@
 //   - Google Fonts:          stale-while-revalidate (fallback = system font)
 // VERSION only matters when the precache FILE LIST changes (add/remove
 // files) — content updates flow through network-first automatically.
-const VERSION = "v3"; // v3: refresh cached footer markup
+const VERSION = "v4"; // v4: privacy.html 補上 manifest + SW 註冊
 const PRECACHE = `lss-precache-${VERSION}`;
 const RUNTIME = "lss-runtime";
 

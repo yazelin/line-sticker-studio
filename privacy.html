@@ -18,6 +18,9 @@
     .back { display: inline-block; margin-bottom: 1.5rem; }
     footer { margin-top: 3rem; font-size: 0.85rem; color: #888; }
   </style>
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});</script>
 </head>
 <body>
   <a class="back" href="./">← 回貼圖工作室</a>
