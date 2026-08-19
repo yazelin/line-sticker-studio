@@ -4,6 +4,7 @@
   "description": "上傳一張角色圖，AI 自動產出整組 LINE 貼圖 (370×320 透明 PNG)，下載 ZIP 直接上架到 LINE Creators Market。",
   "start_url": "./",
   "scope": "./",
+  "id": "./",
   "display": "standalone",
   "orientation": "portrait",
   "lang": "zh-Hant",
@@ -15,5 +16,9 @@
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "screenshot-mobile.webp", "sizes": "540x919", "type": "image/webp", "form_factor": "narrow", "label": "手機上傳角色圖，AI 產出整組 LINE 貼圖" },
+    { "src": "screenshot-desktop.webp", "sizes": "1280x800", "type": "image/webp", "form_factor": "wide", "label": "桌機版 LINE 貼圖製造機工作區" }
   ]
 }
