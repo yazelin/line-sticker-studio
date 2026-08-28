@@ -185,6 +185,18 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
 ### 管理員 reset
 - `POST /admin/reset-quota` with `Authorization: Bearer <ADMIN_TOKEN>`，body `{"ip":"x.x.x.x"}` 指定 IP（省略 → 用 caller 的 IP）
 
+### 管理員快速指令
+
+兩支腳本放在 `scripts/`，可 symlink 到 `~/.local/bin` 後從任何目錄使用：
+
+```bash
+ln -sfn "$PWD/scripts/lss-reg" ~/.local/bin/lss-reg
+ln -sfn "$PWD/scripts/lss-code" ~/.local/bin/lss-code
+```
+
+- `lss-reg`：查 Cloudflare D1 的 8/5 實作營人數與最新報名；`lss-reg --all` 列完整名單。預設讀取 `~/k-rider/worker/wrangler.toml`，可用 `KRIDER_WRANGLER_CONFIG` 改路徑。
+- `lss-code 10`：產生一張 10 次兌換碼；第二個參數是張數，例如 `lss-code 10 6`。Token 依序讀 `LSS_ADMIN_TOKEN` 或 `~/.config/lss/token`。
+
 > 🚫 **沒驗證路徑也限額？** 故意不做。BYOG 路徑（自己用 Gemini 跑）天生不耗 worker 額度、不限次、無 Turnstile；要 AI 產就過一次無感驗證。
 
 ## 🛡 內容合規（LINE Creators Market 退件雷區）
