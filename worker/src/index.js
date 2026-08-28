@@ -35,7 +35,7 @@ function genaiCall(env, model) {
 // BYOG stays unlimited, paying users spend their balance first.
 const DAILY_LIMIT = 1;
 
-// 上游連不上時（Cloudflare 522、家用線路換 IP、origin 重啟…）畫面上只有一句話
+// 上游連不上時（Cloudflare 522、對外 IP 變動、origin 重啟…）畫面上只有一句話
 // 對使用者有用：再試一次。原始錯誤字串不要往前端丟，那是給 log 看的。
 const NET_ERROR = "連線不穩，請稍後再試一次";
 
