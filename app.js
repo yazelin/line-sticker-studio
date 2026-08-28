@@ -941,14 +941,6 @@ async function generateAll() {
     } else if (err.code === "TURNSTILE_FAILED") {
       const reason = err.detail ? `（${err.detail}）` : "";
       setGenProgress(0, `人機驗證失敗${reason}，重新整理頁面再試一次。`);
-    } else if (/\b524\b|timeout/i.test(err.message)) {
-      setGenProgress(0,
-        `Gemini 太慢沒回應（524 timeout）— 你的 quota 沒被扣，直接再按一次「開始生成」就好。85% 機率立刻成功。`,
-      );
-    } else if (/\b502\b|upstream/i.test(err.message)) {
-      setGenProgress(0,
-        `Vertex AI 上游錯誤（502）— 你的 quota 沒被扣，等 30 秒再按「開始生成」。`,
-      );
     } else {
       setGenProgress(0, `失敗：${err.message}`);
     }
