@@ -35,6 +35,10 @@ function genaiCall(env, model) {
 // BYOG stays unlimited, paying users spend their balance first.
 const DAILY_LIMIT = 1;
 
+// 上游連不上時（Cloudflare 522、家用線路換 IP、origin 重啟…）畫面上只有一句話
+// 對使用者有用：再試一次。原始錯誤字串不要往前端丟，那是給 log 看的。
+const NET_ERROR = "連線不穩，請稍後再試一次";
+
 // Cloudflare Turnstile site key — public, safe to expose. Frontend reads
 // this via GET /config so we don't hardcode it twice. Pair this with
 // the TURNSTILE_SECRET wrangler secret.
@@ -794,7 +798,8 @@ export default {
         });
         if (!upstream.ok) {
           const detail = await upstream.text();
-          return json({ error: "upstream", detail: detail.slice(0, 800) }, 502, cors);
+          console.log("themes upstream", upstream.status, detail.slice(0, 200));
+          return json({ error: NET_ERROR }, 502, cors);
         }
         const data = await upstream.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
@@ -828,7 +833,8 @@ export default {
           200, cors,
         );
       } catch (err) {
-        return json({ error: "fetch failed", detail: String(err) }, 502, cors);
+        console.log("themes fetch failed", String(err));
+        return json({ error: NET_ERROR }, 502, cors);
       }
     }
 
@@ -1106,12 +1112,14 @@ export default {
             });
           } catch (err) {
             await refund();
-            return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
+            console.log("edit fetch failed", String(err));
+            return json({ error: NET_ERROR }, 502, cors);
           }
           if (!upstream.ok) {
             const text = await upstream.text();
             await refund();
-            return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
+            console.log("edit upstream", upstream.status, text.slice(0, 200));
+            return json({ error: NET_ERROR }, 502, cors);
           }
           const data = await upstream.json();
           const imgs = data?.images || [];
@@ -1169,11 +1177,8 @@ export default {
         } catch (err) {
           // Network-level failure → didn't hit Vertex. Refund.
           await refund();
-          return json(
-            { error: "upstream fetch failed", detail: String(err) },
-            502,
-            cors,
-          );
+          console.log("vertex fetch failed", String(err));
+          return json({ error: NET_ERROR }, 502, cors);
         }
 
         if (!upstream.ok) {
@@ -1183,15 +1188,8 @@ export default {
           // their side. Refund either way; if a 4xx pattern develops we'd
           // see it in logs and tighten our prompt-builder.
           await refund();
-          return json(
-            {
-              error: "upstream error",
-              status: upstream.status,
-              detail: text.slice(0, 1500),
-            },
-            502,
-            cors,
-          );
+          console.log("vertex upstream", upstream.status, text.slice(0, 200));
+          return json({ error: NET_ERROR }, 502, cors);
         }
 
         const data = await upstream.json();

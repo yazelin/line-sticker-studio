@@ -994,6 +994,16 @@ function setGenProgress(pct, text) {
   genProgressText.textContent = text;
 }
 
+// worker 回的錯誤已經是給人看的一句話（例如連線不穩）。拿那句就好，
+// 撈不到才退回狀態碼——原始 JSON 丟到畫面上只會嚇到人。
+async function errorMessage(resp) {
+  try {
+    const payload = await resp.json();
+    if (payload?.error) return String(payload.error);
+  } catch {}
+  return `伺服器回應異常（HTTP ${resp.status}）`;
+}
+
 async function fetchGrid(apiUrl, body) {
   // Single auto-retry on Turnstile 403: the most common failure is
   // "timeout-or-duplicate" — the token got consumed by a parallel call
@@ -1055,10 +1065,7 @@ async function fetchGrid(apiUrl, body) {
       throw e;
     }
   }
-  if (!resp.ok) {
-    const detail = await resp.text();
-    throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 300)}`);
-  }
+  if (!resp.ok) throw new Error(await errorMessage(resp));
   const json = await resp.json();
   if (json.quota) {
     auth.quota = json.quota;
@@ -3968,7 +3975,7 @@ themeGenBtn?.addEventListener("click", async () => {
       }),
     });
     resetTurnstile();
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+    if (!resp.ok) throw new Error(await errorMessage(resp));
     const { phrases, slots: aiSlots } = await resp.json();
     if (!Array.isArray(phrases) || phrases.length === 0) {
       throw new Error("AI 沒回 phrases");
