@@ -42,16 +42,35 @@ export async function stubExternal(page) {
     r.fulfill({ body: readFileSync(JSZIP_MIN, "utf8"), contentType: "application/javascript" }));
 }
 
+// Named chroma plates, mirroring app.js CHROMA_KEYS. Tests deliberately keep
+// their own copy: a helper that imported the app's table would move with it.
+export const KEY_RGB = {
+  green: [0, 255, 0],
+  magenta: [255, 0, 255],
+  blue: [0, 0, 255],
+  cyan: [0, 255, 255],
+  yellow: [255, 255, 0],
+};
+
+export function keyRgbOf(key) {
+  if (KEY_RGB[key]) return KEY_RGB[key];
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(key));
+  if (!m) throw new Error(`unknown chroma key: ${key}`);
+  return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+}
+
 // Build a synthetic 3×3 grid PNG in the page and return it as a Buffer.
 // 1024×1024 (not divisible by 3 — exercises the Math.floor split path).
 // Each cell: bg color + a dark-red rounded blob so the character survives
-// chroma-key. bg: "green" | "magenta" | "white".
+// chroma-key. bg: a named plate ("green" | "magenta" | "blue" | "cyan" |
+// "yellow"), "white", or any "#RRGGBB".
 export async function makeGridBuffer(page, bg = "green", size = 1024, height = null) {
   const dataUrl = await page.evaluate(({ bg, size, height }) => {
     const c = document.createElement("canvas");
     c.width = size; c.height = height || size;
     const ctx = c.getContext("2d");
-    const BG = { green: "#00FF00", magenta: "#FF00FF", white: "#FFFFFF" }[bg];
+    const BG = { green: "#00FF00", magenta: "#FF00FF", blue: "#0000FF",
+      cyan: "#00FFFF", yellow: "#FFFF00", white: "#FFFFFF" }[bg] || bg;
     ctx.fillStyle = BG;
     ctx.fillRect(0, 0, size, size);
     const cell = size / 3;
@@ -189,7 +208,7 @@ export async function transparentPixelCount(page, imgSelector) {
 // Transparent pixels are intentionally ignored: their hidden RGB does not
 // render, while even low-alpha colored pixels can form a bright fringe.
 export async function visibleKeySpillPixelCount(page, imgSelector, key) {
-  return page.evaluate(async ({ imgSelector, key }) => {
+  return page.evaluate(async ({ imgSelector, keyRgb }) => {
     const img = document.querySelector(imgSelector);
     const bmp = await createImageBitmap(await (await fetch(img.src)).blob());
     const c = document.createElement("canvas");
@@ -197,17 +216,68 @@ export async function visibleKeySpillPixelCount(page, imgSelector, key) {
     const ctx = c.getContext("2d");
     ctx.drawImage(bmp, 0, 0);
     const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    const mid = (Math.max(...keyRgb) + Math.min(...keyRgb)) / 2;
+    const ki = [0, 1, 2].filter((i) => keyRgb[i] > mid);
+    const oi = [0, 1, 2].filter((i) => !ki.includes(i));
     let spill = 0;
     for (let i = 0; i < d.length; i += 4) {
-      const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
+      const px = [d[i], d[i + 1], d[i + 2]];
+      const a = d[i + 3];
       if (a <= 8) continue;
-      const excess = key === "magenta" ? Math.min(r, b) - g : g - Math.max(r, b);
+      // key 佔的通道裡最弱的一支，減其餘通道裡最強的一支 —— 與 app.js 同一個分數。
+      const excess = Math.min(...ki.map((c) => px[c])) - Math.max(...oi.map((c) => px[c]));
       // Match the legacy cleaner's lower bound: ≤20/255 is a subtle cast;
       // anything above it is the clearly visible green/pink fringe we must remove.
       if (excess > 20) spill++;
     }
     return spill;
-  }, { imgSelector, key });
+  }, { imgSelector, keyRgb: keyRgbOf(key) });
+}
+
+// Count opaque pixels (alpha 255) of an <img> dataURL rendered in-page.
+// The 撞色 negative control needs this: "主體還在嗎" is an opaque-pixel
+// question, and a fully-eaten sticker still looks fine on a checkerboard.
+export async function opaquePixelCount(page, imgSelector) {
+  return page.evaluate(async (sel) => {
+    const img = document.querySelector(sel);
+    const bmp = await createImageBitmap(await (await fetch(img.src)).blob());
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(bmp, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] === 255) n++;
+    return n;
+  }, imgSelector);
+}
+
+// A grid whose cells already have the 370:320 sticker aspect ratio, so
+// splitGrid adds no padding bars — the only backdrop colour in the output
+// is `plate`. That keeps custom-key tests honest: with a square fixture the
+// contain-fit bars are painted in whatever key was selected AT IMPORT time,
+// which would show up as leftover opaque pixels unrelated to the keying.
+// `subject` is the disc colour; pass one close to `plate` for the 撞色
+// negative control.
+export async function makeAspectGridBuffer(page, plate, subject = "rgb(180, 26, 30)") {
+  const dataUrl = await page.evaluate(({ plate, subject }) => {
+    const cellW = 370, cellH = 320;
+    const c = document.createElement("canvas");
+    c.width = cellW * 3; c.height = cellH * 3;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = plate;
+    ctx.fillRect(0, 0, c.width, c.height);
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        ctx.fillStyle = subject;
+        ctx.beginPath();
+        ctx.arc(col * cellW + cellW / 2, row * cellH + cellH / 2, cellH * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    return c.toDataURL("image/png");
+  }, { plate, subject });
+  return Buffer.from(dataUrl.split(",")[1], "base64");
 }
 
 // Expected average red channel of a keyed sticker built from fixture tile

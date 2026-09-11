@@ -169,10 +169,24 @@ const LANG_KEY = "line-sticker-lang";
 const TEXT_LANG_KEY = "line-sticker-text-lang";
 const SUPPORTED_TEXT_LANGS = ["zh-TW", "zh-CN", "en", "ja", "ko"];
 const CHROMA_KEY_PREF = "line-sticker-chroma-key";
+// 幕色清單。去背分數不是為每個顏色各寫一段判斷，而是依 key 色佔哪幾個通道
+// 動態算出來（見 chromaChannels）：綠幕算 g - max(r, b)、洋紅幕算 min(r, b) - g、
+// 藍幕算 b - max(r, g)。任何有色度的顏色都做得起來，所以選單之外還能自訂 #RRGGBB。
 const CHROMA_KEYS = {
   green: { label: "綠幕", hex: "#00FF00", rgb: [0, 255, 0] },
   magenta: { label: "洋紅幕", hex: "#FF00FF", rgb: [255, 0, 255] },
+  blue: { label: "藍幕", hex: "#0000FF", rgb: [0, 0, 255] },
+  cyan: { label: "青幕", hex: "#00FFFF", rgb: [0, 255, 255] },
+  yellow: { label: "黃幕", hex: "#FFFF00", rgb: [255, 255, 0] },
 };
+// 三個 key 下拉共用的「自訂色…」選項值。
+const CUSTOM_CHROMA_VALUE = "__custom__";
+// 色度下限（RGB 最大值減最小值）。黑、白、灰的色度是 0，chroma key 在數學上
+// 抓不到它們 —— 擋在入口，不要讓使用者選一個永遠 key 不掉東西的顏色。
+const MIN_CHROMA_SPREAD = 60;
+// 標準檔位的純度判準。幕色自己也必須通過（否則選下去等於什麼都不去背），
+// 所以抽成常數給 CHROMA_TUNE_PROFILES.balanced 與入口檢查共用。
+const CHROMA_PURITY = { minKey: 50, maxOther: 110, dominance: 1.7 };
 function loadTextLang() {
   const v = localStorage.getItem(TEXT_LANG_KEY);
   return SUPPORTED_TEXT_LANGS.includes(v) ? v : "zh-TW";
@@ -182,8 +196,59 @@ function saveTextLang(lang) {
     localStorage.setItem(TEXT_LANG_KEY, lang);
   }
 }
+function parseChromaHex(value) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(value ?? "").trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function chromaHexOf(rgb) {
+  return "#" + rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+function chromaSpread(rgb) {
+  return Math.max(...rgb) - Math.min(...rgb);
+}
+function isCustomChromaKey(key) {
+  return typeof key === "string" && key.startsWith("#");
+}
+// key 色佔哪幾個通道 → 決定分數怎麼算。取「最大與最小的中點」當分界，
+// 綠幕得到 ki=[g]、oi=[r,b]，洋紅幕得到 ki=[r,b]、oi=[g]，青幕得到 ki=[g,b]。
+// 有色度的顏色一定有通道在中點兩側，所以 ki 與 oi 都不會是空的。
+function chromaChannels(rgb) {
+  const mid = (Math.max(...rgb) + Math.min(...rgb)) / 2;
+  const ki = [0, 1, 2].filter((i) => rgb[i] > mid);
+  return { ki, oi: [0, 1, 2].filter((i) => !ki.includes(i)) };
+}
+// 一個像素對某支幕色的分數：key 通道裡最弱的一支，減其餘通道裡最強的一支。
+function chromaScore(rgb, keyRgb) {
+  const { ki, oi } = chromaChannels(keyRgb);
+  return (Math.min(...ki.map((i) => rgb[i])) - Math.max(...oi.map((i) => rgb[i]))) / 255;
+}
+// 這支顏色能不能當幕色？回傳 "" 代表可以，否則回傳要給使用者看的原因。
+function chromaKeyRejection(value) {
+  const rgb = parseChromaHex(value);
+  if (!rgb) return "請填 #RRGGBB 形式的色碼，例如 #FF8000。";
+  if (chromaSpread(rgb) < MIN_CHROMA_SPREAD) {
+    return `${chromaHexOf(rgb)} 沒有色度（黑、白、灰都是），chroma key 在數學上抓不到它。`
+      + "請改用飽和的底色重生一張，例如 #00FF00、#FF00FF、#0000FF。";
+  }
+  // 標準檔位是「夠純的幕色才砍」，所以幕色自己必須先通過純度判準，
+  // 否則選下去會靜默地什麼都不去（LINE 退件第一名）。
+  const { ki, oi } = chromaChannels(rgb);
+  const hi = Math.min(...ki.map((i) => rgb[i]));
+  const lo = Math.max(...oi.map((i) => rgb[i]));
+  const T = CHROMA_PURITY;
+  if (!(hi >= T.minKey && lo <= T.maxOther && hi >= lo * T.dominance)) {
+    return `${chromaHexOf(rgb)} 不夠飽和（其他通道太亮），去背會抓不乾淨。`
+      + "請把底色調得更純一點，例如 #FF8000、#00B7A8。";
+  }
+  return "";
+}
 function normalizeChromaKey(key) {
-  return CHROMA_KEYS[key] ? key : "green";
+  if (CHROMA_KEYS[key]) return key;
+  const rgb = parseChromaHex(key);
+  if (rgb && !chromaKeyRejection(key)) return chromaHexOf(rgb);
+  return "green";
 }
 function loadChromaKey() {
   return normalizeChromaKey(localStorage.getItem(CHROMA_KEY_PREF));
@@ -192,7 +257,59 @@ function saveChromaKey(key) {
   localStorage.setItem(CHROMA_KEY_PREF, normalizeChromaKey(key));
 }
 function chromaKeyColor(key = state?.chromaKey) {
-  return CHROMA_KEYS[normalizeChromaKey(key)];
+  const k = normalizeChromaKey(key);
+  if (CHROMA_KEYS[k]) return CHROMA_KEYS[k];
+  return { label: "自訂幕色", hex: k, rgb: parseChromaHex(k) };
+}
+// 顯示用的名字：自訂色要把色碼帶出來，不然使用者看不出是哪一支。
+function chromaKeyName(key) {
+  const k = normalizeChromaKey(key);
+  return CHROMA_KEYS[k] ? CHROMA_KEYS[k].label : `自訂幕色 ${k}`;
+}
+
+// --- 三個 key 下拉共用的同步／讀值／綁定 ---
+// 生成設定（#chroma-key）、整池去背（#bg-key-select）、單張編輯器（#tile-key-select）
+// 都是同一份選單。自訂色不當成 option value，而是記在 select 的 dataset 上，
+// 選單永遠只有「五支具名幕色 + 自訂色…」這幾個 option。
+function syncChromaSelect(sel, key) {
+  if (!sel) return;
+  const k = normalizeChromaKey(key);
+  const opt = sel.querySelector(`option[value="${CUSTOM_CHROMA_VALUE}"]`);
+  if (isCustomChromaKey(k)) {
+    sel.dataset.customKey = k;
+    if (opt) opt.textContent = `自訂 ${k}`;
+    sel.value = CUSTOM_CHROMA_VALUE;
+  } else {
+    if (opt) opt.textContent = "自訂色…";
+    sel.value = k;
+  }
+}
+function chromaSelectValue(sel) {
+  if (!sel) return state.chromaKey;
+  return sel.value === CUSTOM_CHROMA_VALUE
+    ? (sel.dataset.customKey || state.chromaKey)
+    : sel.value;
+}
+// 問一支自訂幕色。不合法（含黑白灰）就講清楚為什麼，回 null 讓呼叫端退回原選擇。
+function promptCustomChromaKey(current) {
+  const seed = isCustomChromaKey(current) ? current : "#FF8000";
+  const input = window.prompt(
+    "自訂幕色色碼（#RRGGBB）。\n黑、白、灰沒有色度，chroma key 抓不到，會被擋下。",
+    seed,
+  );
+  if (input === null) return null;
+  const why = chromaKeyRejection(input);
+  if (why) { alert(why); return null; }
+  return normalizeChromaKey(input);
+}
+function bindChromaSelect(sel, { onPick, fallback }) {
+  if (!sel) return;
+  sel.addEventListener("change", () => {
+    if (sel.value !== CUSTOM_CHROMA_VALUE) { onPick(sel.value); return; }
+    const picked = promptCustomChromaKey(sel.dataset.customKey);
+    if (picked) { syncChromaSelect(sel, picked); onPick(picked); }
+    else syncChromaSelect(sel, fallback());
+  });
 }
 
 // ------------------------------------------------------------------
@@ -570,7 +687,7 @@ const state = {
   styleHint: "match",
   withText: true,
   textLang: loadTextLang(), // "zh-TW" | "zh-CN" | "en" | "ja" | "ko"
-  chromaKey: loadChromaKey(), // "green" | "magenta"
+  chromaKey: loadChromaKey(), // CHROMA_KEYS 的名字，或自訂的 "#RRGGBB"
   campaign: null,        // null or campaign id
   slotConfig: loadSlotConfig(), // length-PACK_SIZE
   tiles: [],             // sticker POOL — tiles from one or more grids (makeTile)
@@ -764,12 +881,15 @@ if (textLangSel) {
 function setChromaKey(key, { persist = true } = {}) {
   state.chromaKey = normalizeChromaKey(key);
   if (persist) saveChromaKey(state.chromaKey);
-  if (chromaKeySel) chromaKeySel.value = state.chromaKey;
-  if (bgKeySelect) bgKeySelect.value = state.chromaKey;
+  syncChromaSelect(chromaKeySel, state.chromaKey);
+  syncChromaSelect(bgKeySelect, state.chromaKey);
 }
 if (chromaKeySel) {
-  chromaKeySel.value = state.chromaKey;
-  chromaKeySel.addEventListener("change", () => setChromaKey(chromaKeySel.value));
+  syncChromaSelect(chromaKeySel, state.chromaKey);
+  bindChromaSelect(chromaKeySel, {
+    onPick: (k) => setChromaKey(k),
+    fallback: () => state.chromaKey,
+  });
 }
 // Dim the language picker while 無字模式 — text-lang is irrelevant then.
 function refreshTextLangAvailability() {
@@ -818,7 +938,7 @@ function syncConfigFromControls() {
     state.styleHint = styleHintSel.value;
   }
   state.withText = withTextSel.value === "true";
-  setChromaKey(chromaKeySel?.value || state.chromaKey);
+  setChromaKey(chromaSelectValue(chromaKeySel) || state.chromaKey);
   return "";
 }
 
@@ -1148,10 +1268,12 @@ async function handleGridUploads(fileList) {
 }
 
 // Sample the 4 corner patches of an uploaded grid and classify the
-// backdrop: "green" | "magenta" | "#rrggbb" (unknown solid-ish color).
-// BYOG uploads with a non-chroma background are the #1 cause of opaque
-// stickers → LINE rejection, so we warn (or auto-pick the right key)
+// backdrop: one of the named CHROMA_KEYS, or "#RRGGBB" (unknown solid-ish
+// color). BYOG uploads with a non-chroma background are the #1 cause of
+// opaque stickers → LINE rejection, so we warn (or auto-pick the right key)
 // at import time instead of letting the user find out after upload.
+// 只認具名的那幾支幕色，其他一律回色碼讓上層擋下來 —— 猜一個顏色硬 key
+// 會靜默吃掉主體，要用選單外的顏色請自己選「自訂色…」。
 function detectGridKeyColor(img) {
   const P = 8; // patch size
   const c = document.createElement("canvas");
@@ -1172,15 +1294,14 @@ function detectGridKeyColor(img) {
     r += d[i]; g += d[i + 1]; b += d[i + 2];
   }
   r /= n; g /= n; b /= n;
-  const greenScore = (g - Math.max(r, b)) / 255;
-  const magentaScore = (Math.min(r, b) - g) / 255;
-  if (greenScore > 0.25) return "green";
-  if (magentaScore > 0.25) return "magenta";
-  const hex = "#" + [r, g, b]
-    .map((v) => Math.round(v).toString(16).padStart(2, "0"))
-    .join("")
-    .toUpperCase();
-  return hex;
+  // 每支具名幕色各算一次分數，取最高的那支；都不夠高就回色碼。
+  let best = null;
+  for (const [name, def] of Object.entries(CHROMA_KEYS)) {
+    const score = chromaScore([r, g, b], def.rgb);
+    if (score > 0.25 && (!best || score > best.score)) best = { name, score };
+  }
+  if (best) return best.name;
+  return chromaHexOf([r, g, b]);
 }
 
 // Heuristic: did background removal actually bite on this sticker?
@@ -1246,17 +1367,20 @@ async function handleGridUpload(file) {
     return;
   }
   const img = await loadImage(URL.createObjectURL(file));
+  clearPoolKeyOverride();
   // Backdrop sanity check — auto-switch key color when the grid clearly
   // uses the other chroma plate; warn when it's neither (white/photo bg).
   const detected = detectGridKeyColor(img);
   let uploadNote = "";
-  if (detected === "green" || detected === "magenta") {
+  if (CHROMA_KEYS[detected]) {
     if (detected !== state.chromaKey) {
       setChromaKey(detected, { persist: false });
       uploadNote = `偵測到${CHROMA_KEYS[detected].label}背景，已自動切換 key 色。`;
     }
   } else {
-    uploadNote = `來源背景色 ${detected} 看起來不是綠幕/洋紅幕 — 去背可能失敗，LINE 上架需要透明背景。`;
+    uploadNote = `來源背景色 ${detected} 看起來不是綠幕、洋紅幕、藍幕、青幕或黃幕 — `
+      + "去背可能失敗，LINE 上架需要透明背景。確定這是平底色的話，"
+      + "可以在 Key 選單選「自訂色…」填色碼。";
   }
   const ratio = img.naturalWidth / img.naturalHeight;
   if (ratio < 0.85 || ratio > 1.18) {
@@ -1320,7 +1444,7 @@ function makeTile(canvas, { phrase = "", included = false, srcGridId = null, src
     canvas,                  // current pixels (may be cleaned)
     originalCanvas: canvas,  // pristine split — the only cleanup input
     srcStickerId,            // set when this tile IS a finished sticker
-    srcKey,                  // this grid's own backdrop (green|magenta)
+    srcKey,                  // this grid's own backdrop (named key or "#RRGGBB")
     transparent: false,
     cleanParams: null,       // { key, tune } when cleaned
     textParams: null,        // text overlay (issue #8)
@@ -1519,9 +1643,19 @@ async function splitGrid(img, keyName = null) {
   // happened to be at split time) painted green padding bars onto
   // magenta grids the moment you pooled them from history.
   let key = normalizeChromaKey(keyName);
+  // 補邊要填的顏色。具名幕色就填那支；認不出來但量到的底色本身可以當幕色
+  // （例如紅底），就填量到的那支 —— 補邊才會跟真正的背景同色，使用者事後
+  // 改挑自訂幕色時補邊會跟著被去掉，不會留下一圈別的顏色的實心色條。
+  let fill = chromaKeyColor(key).hex;
   if (!keyName) {
     const det = detectGridKeyColor(img);
-    key = (det === "green" || det === "magenta") ? det : state.chromaKey;
+    if (CHROMA_KEYS[det]) {
+      key = det;
+      fill = CHROMA_KEYS[det].hex;
+    } else {
+      key = state.chromaKey;
+      fill = chromaKeyRejection(det) ? chromaKeyColor(key).hex : det;
+    }
   }
   const tileW = Math.floor(img.naturalWidth / 3);
   const tileH = Math.floor(img.naturalHeight / 3);
@@ -1538,7 +1672,7 @@ async function splitGrid(img, keyName = null) {
       // catches the unfilled padding (left/right 25px when contain-fitting
       // a square cell into landscape 370×320). Was: white — which chroma
       // key didn't recognize → showed up as opaque white bars.
-      tctx.fillStyle = CHROMA_KEYS[key].hex;
+      tctx.fillStyle = fill;
       tctx.fillRect(0, 0, STICKER_W, STICKER_H);
 
       // Crop with inset on each side, then contain-fit the cropped
@@ -1745,6 +1879,14 @@ const tileDialogImg = $("tile-dialog-img");
 const tileDialogTitle = $("tile-dialog-title");
 const tileDialogStatus = $("tile-dialog-status");
 const tileKeySelect = $("tile-key-select");
+// 單張編輯器的 key 是「這一張的」，不動全域設定；取消自訂就退回這張原本用的幕色。
+bindChromaSelect(tileKeySelect, {
+  onPick: () => {},
+  fallback: () => {
+    const t = editorTile();
+    return t?.cleanParams?.key || t?.srcKey || state.chromaKey;
+  },
+});
 const tileTuneSelect = $("tile-tune-select");
 const tileCleanBtn = $("tile-clean-btn");
 const tileRestoreBtn = $("tile-restore-btn");
@@ -1852,7 +1994,7 @@ function openDetachedEditor(tile, title) {
   editorDetachedTitle = title || "素材編輯";
   tileDialogIdx = -1;
   setEditorPoolControlsHidden(true);
-  tileKeySelect.value = tile.cleanParams?.key || tile.srcKey || state.chromaKey;
+  syncChromaSelect(tileKeySelect, tile.cleanParams?.key || tile.srcKey || state.chromaKey);
   tileTuneSelect.value = (typeof tile.cleanParams?.tune === "string" && tile.cleanParams.tune) || "balanced";
   if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
   refreshTileDialog();
@@ -1877,7 +2019,7 @@ function openTileDialog(idx) {
   if (!tile || !tileDialog) return;
   tileDialogIdx = idx;
   // Seed controls from this tile's own params, falling back to globals.
-  tileKeySelect.value = tile.cleanParams?.key || tile.srcKey || state.chromaKey;
+  syncChromaSelect(tileKeySelect, tile.cleanParams?.key || tile.srcKey || state.chromaKey);
   tileTuneSelect.value = tile.cleanParams?.tune || bgTuneSelect?.value || "balanced";
   if (tileShareBtn) tileShareBtn.hidden = typeof navigator.canShare !== "function";
   refreshTileDialog();
@@ -1908,7 +2050,7 @@ function refreshTileDialog() {
     tileCleanBtn.textContent = tile.cleanParams ? "重新去背（只這張）" : "去背（只這張）";
   }
   if (tile.cleanParams) {
-    const keyLabel = CHROMA_KEYS[tile.cleanParams.key]?.label || tile.cleanParams.key;
+    const keyLabel = chromaKeyName(tile.cleanParams.key);
     const t = tile.cleanParams.tune;
     const tuneLabel = typeof t === "object" ? "自訂細調"
     : ({ safe: "保守", balanced: "標準（細節優先）", aggressive: "積極", continuous: "連續清理（背景優先）" }[t] || t);
@@ -1925,7 +2067,7 @@ tileCleanBtn?.addEventListener("click", async () => {
   tileCleanBtn.disabled = true;
   try {
     await cleanTile(tile, {
-      key: tileKeySelect.value,
+      key: chromaSelectValue(tileKeySelect),
       tune: tileTuneSelect.value,
     });
     if (editorInPool()) renderPool();
@@ -1979,7 +2121,7 @@ function scheduleAdvApply() {
     if (!tile || tile.busy) return;
     tile.busy = true;
     try {
-      await cleanTile(tile, { key: tileKeySelect.value, tune: advProfileFromSliders() });
+      await cleanTile(tile, { key: chromaSelectValue(tileKeySelect), tune: advProfileFromSliders() });
       if (editorInPool()) renderPool();
       refreshTileDialog();
       historyPush();
@@ -2843,9 +2985,17 @@ const bgBarFill = $("bg-bar-fill");
 const bgProgressText = $("bg-progress-text");
 const bgTuneSelect = $("bg-tune-select");
 const bgKeySelect = $("bg-key-select");
+// 整池去背那排的 Key 是「使用者親手挑的」。沒挑過就沿用每張圖自己的 srcKey
+// （混池時綠幕圖與洋紅幕圖各用各的）；挑過之後就以他挑的為準，否則選單看起來
+// 有反應、去背卻還是照舊用匯入時偵測到的顏色。匯入新圖會清掉這個覆寫。
+let poolKeyOverride = null;
+function clearPoolKeyOverride() { poolKeyOverride = null; }
 if (bgKeySelect) {
-  bgKeySelect.value = state.chromaKey;
-  bgKeySelect.addEventListener("change", () => setChromaKey(bgKeySelect.value));
+  syncChromaSelect(bgKeySelect, state.chromaKey);
+  bindChromaSelect(bgKeySelect, {
+    onPick: (k) => { poolKeyOverride = k; setChromaKey(k); },
+    fallback: () => state.chromaKey,
+  });
 }
 
 bgRemoveBtn.addEventListener("click", removeAllBackgrounds);
@@ -2866,7 +3016,7 @@ async function removeAllBackgrounds() {
         ((i + 0.1) / state.tiles.length) * 100,
         `去背中 ${i + 1}/${state.tiles.length}…`,
       );
-      await cleanTile(tile);
+      await cleanTile(tile, poolKeyOverride ? { key: poolKeyOverride } : {});
       renderTileIntoCell(i, tile);
     }
     state.bgRemoved = true;
@@ -3030,7 +3180,7 @@ function detectBgType(orig, w, h) {
 // whose background is more important than preserving uncertain edge pixels.
 const CHROMA_TUNE_PROFILES = {
   safe: { mode: "strict", hard: 0.32, soft: 0.12, minKey: 60, maxOther: 100, dominance: 1.9, erode: 0 },
-  balanced: { mode: "strict", hard: 0.25, soft: 0.05, minKey: 50, maxOther: 110, dominance: 1.7, erode: 0 },
+  balanced: { mode: "strict", hard: 0.25, soft: 0.05, ...CHROMA_PURITY, erode: 0 },
   aggressive: { mode: "strict", hard: 0.20, soft: 0.04, minKey: 40, maxOther: 125, dominance: 1.45, erode: 1 },
   continuous: { mode: "continuous", hard: 0.25, soft: 0.05, minKey: 50, maxOther: 110, dominance: 1.7, erode: 0 },
 };
@@ -3041,9 +3191,12 @@ function resolveChromaTuneProfile(tune = "balanced") {
   return CHROMA_TUNE_PROFILES[tune] || CHROMA_TUNE_PROFILES.balanced;
 }
 
-// Chroma-key out a selected green/magenta background with selectable matte.
+// Chroma-key out the selected backdrop with selectable matte.
 // Strict/pureKey is the default because it preserves uncertain foreground
 // edges. Continuous is intentionally opt-in for stronger whole-image cleanup.
+// 分數、純度、despill 全部依 key 色佔哪幾個通道算，不是每個顏色各寫一段 if：
+// 綠幕的 ki=[g]、oi=[r,b]，算出來就是 (g - max(r,b))；洋紅幕的 ki=[r,b]、oi=[g]，
+// 算出來就是 (min(r,b) - g)。兩支既有幕色的行為與舊版逐一致，新的顏色自然成立。
 async function chromaKeyColorOut(srcCanvas, w, h, orig, outlineStyle, tune = "balanced", key = "green") {
   const TUNE = resolveChromaTuneProfile(tune);
   const keyName = normalizeChromaKey(key);
@@ -3056,28 +3209,30 @@ async function chromaKeyColorOut(srcCanvas, w, h, orig, outlineStyle, tune = "ba
     ? Math.max(0, Math.min(1, ((minNorm + dominanceNorm) / 2 - balancedNorm) / (1 - balancedNorm)))
     : 0;
   const despillStrength = 1 - 0.35 * conservativeNorm;
-  const keyScore = (r, g, b) =>
-    keyName === "magenta"
-      ? (Math.min(r, b) - g) / 255
-      : (g - Math.max(r, b)) / 255;
-  const isPureKey = (r, g, b) => keyName === "magenta"
-    ? Math.min(r, b) >= TUNE.minKey &&
-      g <= TUNE.maxOther &&
-      r >= g * TUNE.dominance &&
-      b >= g * TUNE.dominance
-    : g >= TUNE.minKey &&
-      r <= TUNE.maxOther &&
-      b <= TUNE.maxOther &&
-      g >= r * TUNE.dominance &&
-      g >= b * TUNE.dominance;
+  const { ki, oi } = chromaChannels(chromaKeyColor(keyName).rgb);
+  // 兩組通道最多各兩支，攤開成純量比較，逐像素不配置陣列。
+  const k0 = ki[0], k1 = ki.length > 1 ? ki[1] : ki[0];
+  const o0 = oi[0], o1 = oi.length > 1 ? oi[1] : oi[0];
+  const chan = (r, g, b, c) => (c === 0 ? r : c === 1 ? g : b);
+  // hi：key 佔的通道裡最弱的一支。lo：其餘通道裡最強的一支。
+  const keyHi = (r, g, b) => Math.min(chan(r, g, b, k0), chan(r, g, b, k1));
+  const keyLo = (r, g, b) => Math.max(chan(r, g, b, o0), chan(r, g, b, o1));
+  const keyScore = (r, g, b) => (keyHi(r, g, b) - keyLo(r, g, b)) / 255;
+  const isPureKey = (r, g, b) => {
+    const hi = keyHi(r, g, b);
+    const lo = keyLo(r, g, b);
+    return hi >= TUNE.minKey && lo <= TUNE.maxOther && hi >= lo * TUNE.dominance;
+  };
   const clampByte = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  // 把 key 佔的通道拉回其他通道的水準（綠幕＝拉回 (r+b)/2、洋紅幕＝拉回 g）。
+  // 只在 key 色佔優的像素上做，整張套用會把主體本來就該有的那個顏色洗掉。
   const despill = (i, r, g, b) => {
-    if (keyName === "magenta") {
-      od[i] = clampByte(r + (g - r) * despillStrength);
-      od[i + 2] = clampByte(b + (g - b) * despillStrength);
-    } else {
-      const target = (r + b) / 2;
-      od[i + 1] = clampByte(g + (target - g) * despillStrength);
+    let target = 0;
+    for (const c of oi) target += chan(r, g, b, c);
+    target /= oi.length;
+    for (const c of ki) {
+      const v = chan(r, g, b, c);
+      od[i + c] = clampByte(v + (target - v) * despillStrength);
     }
   };
   const out = document.createElement("canvas");
@@ -3108,9 +3263,7 @@ async function chromaKeyColorOut(srcCanvas, w, h, orig, outlineStyle, tune = "ba
     const alpha = Math.round((keyAlpha * sourceAlpha) / 255);
     od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
 
-    const keyDominant = keyName === "magenta"
-      ? r > g && b > g
-      : g > r && g > b;
+    const keyDominant = keyHi(r, g, b) > keyLo(r, g, b);
     if (alpha > 0 && keyDominant) {
       despill(i, r, g, b);
       if (keyAlpha < 255 && (mode === "continuous" || pureKey)) nSpillCleaned++;
@@ -3419,7 +3572,7 @@ async function downloadZip() {
   if (opaqueNums.length > 0) {
     const ok = confirm(
       `第 ${opaqueNums.join("、")} 張完全沒有透明背景 — LINE 上架會被退件。\n\n` +
-      "常見原因：來源圖背景不是綠幕/洋紅幕，chroma-key 認不到。\n\n" +
+      "常見原因：來源圖背景不是選單裡的幕色（綠、洋紅、藍、青、黃或自訂色），chroma-key 認不到。\n\n" +
       "→ 確定：仍要下載\n" +
       "→ 取消：回去檢查（試試換 key 色重新去背，或換來源圖）",
     );
@@ -4985,6 +5138,7 @@ async function loadFromHistory(id) {
   if (e.metadata?.styleHint) state.styleHint = e.metadata.styleHint;
   if (e.metadata?.campaign !== undefined) state.campaign = e.metadata.campaign;
   if (e.metadata?.withText !== undefined) state.withText = e.metadata.withText;
+  clearPoolKeyOverride();
   setChromaKey(e.metadata?.chromaKey || "green");
   const img = await loadImage(URL.createObjectURL(e.gridBlob));
   const tiles = await splitGrid(img, e.metadata?.chromaKey || null);
