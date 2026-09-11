@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-// Generate visual comparisons for the green/magenta chroma-key algorithms.
+// Generate visual comparisons for the chroma-key algorithms.
 // Usage:
-//   node tools/chroma-compare.mjs [--key=green|magenta] image-a.png image-b.png
+//   node tools/chroma-compare.mjs [--key=green|magenta|blue|cyan|yellow|#RRGGBB] image-a.png image-b.png
 //
 // The output is written next to each source image as
 //   <name>.chroma-compare.png
@@ -18,15 +18,32 @@ import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 
+// 與 app.js 的 CHROMA_KEYS 同一份清單；選單外的顏色直接給 #RRGGBB。
+const NAMED_KEYS = {
+  green: [0, 255, 0],
+  magenta: [255, 0, 255],
+  blue: [0, 0, 255],
+  cyan: [0, 255, 255],
+  yellow: [255, 255, 0],
+};
+
 const args = process.argv.slice(2);
 const keyArg = args.find((arg) => arg.startsWith("--key="))?.slice("--key=".length) || "green";
 const inputs = args.filter((arg) => !arg.startsWith("--key="));
-if (!['green', 'magenta'].includes(keyArg)) {
-  console.error("--key must be green or magenta");
+const hexMatch = /^#?([0-9a-f]{6})$/i.exec(keyArg);
+const keyRgb = NAMED_KEYS[keyArg] || (hexMatch
+  ? [0, 2, 4].map((i) => parseInt(hexMatch[1].slice(i, i + 2), 16))
+  : null);
+if (!keyRgb) {
+  console.error(`--key must be one of ${Object.keys(NAMED_KEYS).join(", ")} or #RRGGBB`);
+  process.exit(2);
+}
+if (Math.max(...keyRgb) - Math.min(...keyRgb) < 60) {
+  console.error("--key 沒有色度（黑、白、灰都是），chroma key 抓不到它");
   process.exit(2);
 }
 if (inputs.length === 0) {
-  console.error("Usage: node tools/chroma-compare.mjs [--key=green|magenta] <grid.png> [more-grid.png ...]");
+  console.error("Usage: node tools/chroma-compare.mjs [--key=green|magenta|blue|cyan|yellow|#RRGGBB] <grid.png> [more-grid.png ...]");
   process.exit(2);
 }
 
@@ -38,7 +55,15 @@ for (const input of inputs) {
   const absolute = path.resolve(input);
   const b64 = fs.readFileSync(absolute).toString("base64");
   const mime = path.extname(absolute).toLowerCase() === ".jpg" ? "image/jpeg" : "image/png";
-  const result = await page.evaluate(async ({ b64, mime, key }) => {
+  const result = await page.evaluate(async ({ b64, mime, key, keyRgb }) => {
+    // key 佔哪幾個通道決定分數怎麼算 —— 和 app.js 的 chromaChannels 同一套。
+    const mid = (Math.max(...keyRgb) + Math.min(...keyRgb)) / 2;
+    const ki = [0, 1, 2].filter((i) => keyRgb[i] > mid);
+    const oi = [0, 1, 2].filter((i) => !ki.includes(i));
+    const chan = (r, g, b, c) => (c === 0 ? r : c === 1 ? g : b);
+    const keyHi = (r, g, b) => Math.min(...ki.map((c) => chan(r, g, b, c)));
+    const keyLo = (r, g, b) => Math.max(...oi.map((c) => chan(r, g, b, c)));
+    const keyHex = "#" + keyRgb.map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase();
     const STICKER_W = 370;
     const STICKER_H = 320;
     const INSET = 0.03;
@@ -52,13 +77,11 @@ for (const input of inputs) {
     source.height = img.naturalHeight;
     source.getContext("2d").drawImage(img, 0, 0);
 
-    function keyScore(r, g, b, key) {
-      return key === "magenta"
-        ? (Math.min(r, b) - g) / 255
-        : (g - Math.max(r, b)) / 255;
+    function keyScore(r, g, b) {
+      return (keyHi(r, g, b) - keyLo(r, g, b)) / 255;
     }
 
-    function splitTiles(key) {
+    function splitTiles() {
       const out = [];
       const tileW = Math.floor(source.width / 3);
       const tileH = Math.floor(source.height / 3);
@@ -70,7 +93,7 @@ for (const input of inputs) {
           tile.width = STICKER_W;
           tile.height = STICKER_H;
           const ctx = tile.getContext("2d");
-          ctx.fillStyle = key === "magenta" ? "#FF00FF" : "#00FF00";
+          ctx.fillStyle = keyHex;
           ctx.fillRect(0, 0, STICKER_W, STICKER_H);
           const sx = col * tileW + insetX;
           const sy = row * tileH + insetY;
@@ -95,7 +118,7 @@ for (const input of inputs) {
       return dst;
     }
 
-    function processTile(src, key, mode) {
+    function processTile(src, mode) {
       const out = document.createElement("canvas");
       out.width = src.width;
       out.height = src.height;
@@ -111,24 +134,22 @@ for (const input of inputs) {
       const safeUnmix = mode === "safe-unmix" || mode === "safe-unmix-erode";
       const directUnmix = mode === "direct-unmix";
       const erode = mode === "safe-unmix-erode" ? 1 : 0;
-      const isPureKey = (r, g, b) => key === "magenta"
-        ? Math.min(r, b) >= 50 && g <= 110 && r >= g * 1.7 && b >= g * 1.7
-        : g >= 50 && r <= 110 && b <= 110 && g >= r * 1.7 && g >= b * 1.7;
+      const isPureKey = (r, g, b) =>
+        keyHi(r, g, b) >= 50 && keyLo(r, g, b) <= 110 && keyHi(r, g, b) >= keyLo(r, g, b) * 1.7;
       const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
       const despill = (i, r, g, b) => {
-        if (key === "green") od[i + 1] = (r + b) >> 1;
-        else { od[i] = g; od[i + 2] = g; }
+        let target = 0;
+        for (const c of oi) target += chan(r, g, b, c);
+        target = Math.round(target / oi.length);
+        for (const c of ki) od[i + c] = target;
       };
       const tryUnmixKey = (i, r, g, b, alpha) => {
         const a = alpha / 255;
         if (a <= 0.18 || a >= 0.96) return false;
         const inv = 1 - a;
-        const kr = key === "magenta" ? 255 : 0;
-        const kg = key === "green" ? 255 : 0;
-        const kb = key === "magenta" ? 255 : 0;
-        const fr = (r - inv * kr) / a;
-        const fg = (g - inv * kg) / a;
-        const fb = (b - inv * kb) / a;
+        const fr = (r - inv * keyRgb[0]) / a;
+        const fg = (g - inv * keyRgb[1]) / a;
+        const fb = (b - inv * keyRgb[2]) / a;
         if ([fr, fg, fb].some((v) => v < -2 || v > 257)) return false;
         if (Math.max(fr, fg, fb) - Math.min(fr, fg, fb) > 52) return false;
         od[i] = clamp(fr);
@@ -139,11 +160,12 @@ for (const input of inputs) {
 
       for (let i = 0; i < d.length; i += 4) {
         const r = d[i], g = d[i + 1], b = d[i + 2];
-        const score = keyScore(r, g, b, key);
+        const score = keyScore(r, g, b);
         const pure = isPureKey(r, g, b);
-        const neutralForeground = key === "green"
-          ? r >= 128 && b >= 128 && Math.abs(r - b) <= 40
-          : g >= 128 && Math.min(r, b) >= 128 && Math.abs(r - b) <= 40;
+        // 淺色前景邊：非 key 通道都亮，而且彼此接近（白色描邊、髮絲高光）。
+        const oiVals = oi.map((c) => chan(r, g, b, c));
+        const neutralForeground = Math.min(...oiVals) >= 128
+          && Math.max(...oiVals) - Math.min(...oiVals) <= 40;
         const protectLightEdge = hybrid && neutralForeground && score <= hard;
         let alpha = 255;
         if (protectLightEdge) {
@@ -159,7 +181,7 @@ for (const input of inputs) {
           alpha = Math.round(255 * (hard - score) / (hard - soft));
         }
         od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = alpha;
-        const keyDominant = key === "green" ? g > r && g > b : r > g && b > g;
+        const keyDominant = keyHi(r, g, b) > keyLo(r, g, b);
         if (alpha > 0 && keyDominant) {
           const unmixed = alpha < 255 && (directUnmix || (safeUnmix && tryUnmixKey(i, r, g, b, alpha)));
           if (!unmixed) despill(i, r, g, b);
@@ -190,7 +212,7 @@ for (const input of inputs) {
       return clean;
     }
 
-    function tileStats(tile, key) {
+    function tileStats(tile) {
       const d = tile.getContext("2d").getImageData(0, 0, tile.width, tile.height).data;
       let transparent = 0;
       let partial = 0;
@@ -201,9 +223,7 @@ for (const input of inputs) {
         if (a === 0) transparent++;
         else if (a < 255) partial++;
         if (a > 8) {
-          const excess = key === "magenta"
-            ? Math.min(d[i], d[i + 2]) - d[i + 1]
-            : d[i + 1] - Math.max(d[i], d[i + 2]);
+          const excess = keyHi(d[i], d[i + 1], d[i + 2]) - keyLo(d[i], d[i + 1], d[i + 2]);
           if (excess > 20) {
             visibleSpill++;
             spillExcess += excess;
@@ -246,18 +266,18 @@ for (const input of inputs) {
       sctx.fillStyle = "#f9fafb";
       sctx.font = "bold 22px sans-serif";
       sctx.fillText(label, 12, y0 + 30);
-      const tiles = splitTiles(key);
+      const tiles = splitTiles();
       const rendered = [];
       for (let i = 0; i < tiles.length; i++) {
         const x = (i % 3) * STICKER_W;
         const y = y0 + 42 + Math.floor(i / 3) * STICKER_H;
         if (mode !== "raw") checker(sctx, x, y, STICKER_W, STICKER_H);
-        const tile = mode === "raw" ? tiles[i] : processTile(tiles[i], key, mode);
+        const tile = mode === "raw" ? tiles[i] : processTile(tiles[i], mode);
         sctx.drawImage(tile, x, y);
         rendered.push(tile);
       }
       const stats = rendered.reduce((sum, tile) => {
-        const current = tileStats(tile, key);
+        const current = tileStats(tile);
         for (const field of Object.keys(sum)) sum[field] += current[field];
         return sum;
       }, { transparent: 0, partial: 0, visibleSpill: 0, spillExcess: 0 });
@@ -297,7 +317,7 @@ for (const input of inputs) {
       bestUrl: best.toDataURL("image/png"),
       stats: Object.fromEntries(renderedRows.map((row) => [row.label, row.stats])),
     };
-  }, { b64, mime, key: keyArg });
+  }, { b64, mime, key: keyArg, keyRgb });
 
   const output = absolute.replace(/\.[^.]+$/, ".chroma-compare.png");
   const zoomOutput = absolute.replace(/\.[^.]+$/, ".chroma-compare-zoom.png");

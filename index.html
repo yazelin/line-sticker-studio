@@ -418,8 +418,12 @@
         <select id="chroma-key">
           <option value="green" selected>綠幕 #00FF00</option>
           <option value="magenta">洋紅幕 #FF00FF</option>
+          <option value="blue">藍幕 #0000FF</option>
+          <option value="cyan">青幕 #00FFFF</option>
+          <option value="yellow">黃幕 #FFFF00</option>
+          <option value="__custom__">自訂色…</option>
         </select>
-        <span class="field-hint">綠色角色建議選洋紅幕；粉紅/紫色角色建議選綠幕。生成和去背會使用同一個 key color。</span>
+        <span class="field-hint">挑一支角色身上沒有的顏色：綠色角色選洋紅幕、粉紅角色選綠幕、藍色角色選黃幕。生成和去背會使用同一個 key color。選「自訂色…」可以填 #RRGGBB；黑、白、灰沒有色度，chroma key 抓不到，會被擋下。</span>
       </label>
 
       <label class="field">
@@ -566,6 +570,10 @@
         <select id="tile-key-select" aria-label="這張的 Chroma Key 顏色">
           <option value="green">綠幕</option>
           <option value="magenta">洋紅幕</option>
+          <option value="blue">藍幕</option>
+          <option value="cyan">青幕</option>
+          <option value="yellow">黃幕</option>
+          <option value="__custom__">自訂色…</option>
         </select>
       </label>
       <label class="bg-tune">強度
@@ -709,6 +717,10 @@
         <select id="bg-key-select" aria-label="Chroma Key 顏色">
           <option value="green" selected>綠幕</option>
           <option value="magenta">洋紅幕</option>
+          <option value="blue">藍幕</option>
+          <option value="cyan">青幕</option>
+          <option value="yellow">黃幕</option>
+          <option value="__custom__">自訂色…</option>
         </select>
       </label>
     </div>

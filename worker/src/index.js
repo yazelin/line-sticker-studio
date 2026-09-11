@@ -367,15 +367,55 @@ const CHROMA_KEYS = {
     avoid: "magenta, hot pink, fuchsia, neon pink, purple-pink, chroma magenta, magenta-tinted colors",
     substitutions: "green, blue, orange, yellow, red, teal, or neutral colors",
   },
+  blue: {
+    name: "blue screen",
+    forbiddenLabel: "blue-screen color",
+    hex: "#0000FF",
+    color: "PURE NEON BLUE",
+    avoid: "blue, neon blue, royal blue, indigo, blue-tinted colors",
+    substitutions: "green, orange, yellow, red, brown, or neutral colors",
+  },
+  cyan: {
+    name: "cyan screen",
+    forbiddenLabel: "cyan-screen color",
+    hex: "#00FFFF",
+    color: "PURE NEON CYAN",
+    avoid: "cyan, aqua, turquoise, teal, sky blue, cyan-tinted colors",
+    substitutions: "red, orange, yellow, magenta, brown, or neutral colors",
+  },
+  yellow: {
+    name: "yellow screen",
+    forbiddenLabel: "yellow-screen color",
+    hex: "#FFFF00",
+    color: "PURE NEON YELLOW",
+    avoid: "yellow, lemon, gold, mustard, yellow-tinted colors",
+    substitutions: "blue, green, magenta, red, purple, or neutral colors",
+  },
 };
 
+// 選單外的自訂幕色：前端傳 #RRGGBB 過來，這裡組一份通用描述給生圖 prompt 用。
+// 生圖與去背一定要用同一支顏色，不然生出來的底色去背抓不到。
+function customChromaKey(hex) {
+  return {
+    name: "solid color screen",
+    forbiddenLabel: `backdrop color ${hex}`,
+    hex,
+    color: `THE EXACT SOLID COLOR ${hex}`,
+    avoid: `${hex} and any color close to it`,
+    substitutions: "clearly different, contrasting colors",
+  };
+}
+
 function resolveChromaKey(chromaKey) {
-  return CHROMA_KEYS[chromaKey] ? chromaKey : "green";
+  if (CHROMA_KEYS[chromaKey]) return CHROMA_KEYS[chromaKey];
+  const raw = String(chromaKey || "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(raw)) return customChromaKey(raw.toUpperCase());
+  return CHROMA_KEYS.green;
 }
 
 function buildPrompt({ nine, styleHint, withText, campaign, lang, chromaKey }) {
   const camp = campaign ? campaignById(campaign) : null;
-  const key = CHROMA_KEYS[resolveChromaKey(chromaKey)];
+  const key = resolveChromaKey(chromaKey);
   // Campaign forces win over user input.
   const effectiveStyle = (camp && camp.forceStyleHint) || styleHint;
   const effectiveWithText =
