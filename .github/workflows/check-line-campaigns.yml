@@ -1,8 +1,8 @@
-name: Check LINE campaigns
+name: LINE 特輯活動檢查
 
 on:
   schedule:
-    # 每週一 09:00 Asia/Taipei (= 01:00 UTC)
+    # 每週一台北時間 09:00（UTC 01:00）
     - cron: "0 1 * * 1"
   workflow_dispatch: {} # 允許手動觸發測試
 
@@ -20,30 +20,31 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Run campaign check script
+      - name: 執行活動檢查腳本
         env:
+          GEMINI_WEB_BASE_URL: ${{ secrets.GEMINI_WEB_BASE_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node scripts/check-line-campaigns.mjs
 
-      - name: Bail out if no changes
+      - name: 判斷活動資料是否變更
         id: diff
         run: |
           if git diff --quiet worker/src/campaigns.json; then
-            echo "no changes"
+            echo "沒有變更"
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "campaigns.json changed"
+            echo "campaigns.json 已變更"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open PR with new campaigns
+      - name: 建立活動審查 PR
         if: steps.diff.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           branch: bot/new-line-campaigns
           delete-branch: true
-          commit-message: "feat(campaigns): auto-detected new LINE Creators Market campaign(s)"
-          title: "🤖 New LINE campaign(s) detected — review and add prompt overrides"
+          commit-message: "新增 LINE 特輯活動候選資料"
+          title: "新增 LINE 特輯活動，請審查活動規則"
           body-path: .github/campaign-pr-body.md
           add-paths: worker/src/campaigns.json
           labels: |

@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Static frontend tests for LINE Sticker Studio",
   "scripts": {
-    "test": "playwright test",
+    "test": "npm run test:unit && playwright test",
+    "test:unit": "node scripts/gemini-web-client.test.mjs",
     "serve": "python3 -m http.server 8917"
   },
   "devDependencies": {

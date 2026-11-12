@@ -7,12 +7,12 @@
 Gemini 呼叫就完成（~USD 0.04、約 50 秒）；大套組用「貼圖池」把多張
 3×3 的格子湊起來出。
 
-> 🟢 線上版：<https://yazelin.github.io/line-sticker-studio/>
+> 線上版：<https://yazelin.github.io/line-sticker-studio/>
 
 ## 與姊妹專案 emoji-slot-machine 的差異
 
 兩個專案共用**同一套核心引擎**（上傳角色圖 → 打 gemini-web `/api/edit` → 取回
-3×3 → 前端拆格），但長成兩個不同產品：
+3×3 → 前端拆格），但各自成為不同產品：
 
 | | 本專案 line-sticker-studio | 姊妹 [emoji-slot-machine](https://github.com/yazelin/emoji-slot-machine) |
 |---|---|---|
@@ -27,14 +27,14 @@ Gemini 呼叫就完成（~USD 0.04、約 50 秒）；大套組用「貼圖池」
 gemini-web 內部先走**免費瀏覽器路**，失敗時自動頂替**官方 Gemini API**（付費、需 key）。
 Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight 鎖 + `AI_DISABLED` 急停開關。
 
-## ✨ 特色
+## 特色
 
 ### 兩條輸入路徑
 
-- **🅰 主路徑**：上傳一張角色圖（自拍 / 手繪 / Q 版頭像）讓 AI 產一切
+- **主路徑**：上傳一張角色圖（自拍 / 手繪 / Q 版頭像）讓 AI 產一切
   - **免登入**（Cloudflare Turnstile 無感人機驗證即可）
   - 每天免費 **1 次** AI 生成（per IP、UTC 0 點重置），想多產用**兌換碼加值**（點右上角額度標籤輸入）
-- **🅱 替代路徑**：自己用 Gemini 跑好 3×3 圖直接上傳
+- **替代路徑**：自己用 Gemini 跑好 3×3 圖直接上傳
   - 免登入、免 API 額度、不限次，**可一次選多張 3×3 圖批次匯入**
   - 工具仍會幫你切張、去背、打包成 LINE 規格 ZIP
 
@@ -44,26 +44,26 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
 
 ### 專案（多個並行、自動儲存）
 
-- 貼圖池就是專案：選了哪些格、排序、main/tab、去背參數、文字圖層——**改了就自動存**，重開瀏覽器自動還原上次專案
+- 貼圖池就是專案：選了哪些格、排序、main/tab、去背參數與文字圖層，改動後就會自動儲存，重開瀏覽器也會還原上次專案
 - 專案可多個並行：組包列切換／命名／新增／刪除；載入別的 grid 會自動另開新草稿，不會蓋掉舊專案
 - 專案只存「參照 + 參數」，像素永遠從素材庫的原圖重算；被專案引用的 grid 不會被歷史自動清理清掉
 
 ### 文字圖層（無字生圖 + 前端疊字）
 
 - 每格獨立的文字：內容／字級／字色／描邊／位置（8 種錨點含直書，或**直接在放大圖上拖到任何位置**）／文字在角色上層或下層
-- **字型自由換**：內建字型、上傳 .ttf/.otf/.woff2（存在瀏覽器裡，下次還在）、Chrome 桌面可一鍵列出**本機字型**（你電腦裡的少女體直接用）
+- **字型自由換**：內建字型、上傳 .ttf/.otf/.woff2（存在瀏覽器裡，下次還在）、Chrome 桌面可按一下列出**本機字型**（你電腦裡的少女體直接用）
 - 改字零 API 成本、不重生圖、任何語言；超出 LINE 10px 安全區會提醒
 
 ### 大套組與貼圖池
 
 - **8 / 16 / 24 / 32 / 40 張套組**：LINE 靜態貼圖的五種套組張數全支援。
-  一張 3×3 出 9 格，想出大套組就把多張 grid 的格子湊進「貼圖池」——
-  歷史區每張 grid 都有「＋」一鍵入池，或 BYOG 一次上傳多張圖自動湊
+  一張 3×3 出 9 格，想出大套組就把多張 grid 的格子湊進「貼圖池」。
+  歷史區每張 grid 都有「＋」按鈕可加入貼圖池，或 BYOG 一次上傳多張圖自動湊
   （AI 一次 = 9 格；想一天湊出 40 張套組，用兌換碼額度連產、或 BYOG 批次上傳）
 - **自選主圖 / 聊天室標籤**：每格可指定當 `main.png`（商店門面）或 `tab.png`，不再固定第一張
 - **貼圖排序**：每格 ▲▼ 調整順序，決定 ZIP 內 `01…NN` 的上架排列
 - **單張放大檢視 + 單張重去背**：點 ⤢ 開放大視窗（棋盤格透明底），
-  這張單獨換 key 色 / 強度重跑去背或還原原圖——永遠從原始切圖重算，不疊髒邊
+  這張單獨換 key 色 / 強度重跑去背或還原原圖，永遠從原始切圖重算，不疊髒邊
 - **單張下載 / 分享**：放大視窗內可存單張透明 PNG，手機直接叫出系統分享面板傳 LINE / IG（做 1 張傳朋友，不必打包 ZIP）
 
 ### 上架防呆與去背
@@ -73,15 +73,15 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
   生成與去背用同一支顏色。去背分數依 key 色佔哪幾個通道動態計算（綠幕 `g - max(r,b)`、洋紅幕 `min(r,b) - g`、
   藍幕 `b - max(r,g)`），不是每支顏色各寫一段判斷。黑、白、灰沒有色度，chroma key 在數學上抓不到，選下去會被擋掉並說明原因
 - **BYOG 背景偵測**：匯入時自動辨識五支具名幕色（自動切 key 色）；認不出來只警告「去背可能失敗」，
-  不自己猜一個顏色硬去 —— 猜錯會靜默吃掉主體。確定是平底色就自己選「自訂色…」填色碼
+  不自己猜一個顏色硬去。猜錯會靜默吃掉主體。確定是平底色就自己選「自訂色…」填色碼
 - **去背進階細調**：放大視窗內 5 支連續滑桿（門檻／羽化／亮度／色彩優勢／侵蝕）即時重算，永遠從原始切圖、不疊髒邊；參數跟著專案存
 
 ### Library 與資料自主
 
 - **Prompt 紀錄**：複製過的 prompt 自動留檔，離線也能重看重複製
 - **短語組**：9 格短語＋動作存成命名組合，隨時載回
-- **我的風格**：自訂風格一鍵收藏進畫風下拉
-- **整庫匯出／匯入**：素材＋專案＋Library＋字型打包成一個 zip，換電腦、備份、給朋友都行——資料是你的
+- **我的風格**：自訂風格可按一下收藏進畫風下拉
+- **整庫匯出／匯入**：素材＋專案＋Library＋字型打包成一個 zip，換電腦、備份、給朋友都行，資料由你掌握
 
 ### 離線可用（PWA）
 
@@ -92,11 +92,11 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
 ### 內容自訂
 
 - **9 格逐格自訂**：每格可固定預設 50 句之一 / 自訂任何語言文字 / 留隨機
-- **✨ AI 主題產生器**：描述一個主題（例「上班崩潰」「我家貓」），AI 同時產 9 句短語 + 9 個英文 pose 描述
-- **職業/場景快速入口**：上班族、老師、健身教練、貓奴…16 個 chips 一鍵帶入主題，語錄仍由 AI 動態產生
-- **📝 印字 / 🤐 無字模式**：純表情/動作不印字也是有效設計，特別配合 phrase+action 配對能拿到精準姿勢
-- **🌐 5 種貼圖文字語言**：繁中 / 簡中 / 英文 / 日文 / 韓文，同時影響 AI 短語生成 + Gemini 印字
-- **角色動作描述**：每格可附英文 pose（例 `slumped at desk, weary look`）— 無字模式特別關鍵
+- **AI 主題產生器**：描述一個主題（例「上班崩潰」「我家貓」），AI 同時產 9 句短語 + 9 個英文 pose 描述
+- **職業/場景快速入口**：上班族、老師、健身教練、貓奴…16 個 chips 按一下帶入主題，語錄仍由 AI 動態產生
+- **印字 / 無字模式**：純表情/動作不印字也是有效設計，特別配合 phrase+action 配對能拿到精準姿勢
+- **5 種貼圖文字語言**：繁中 / 簡中 / 英文 / 日文 / 韓文，同時影響 AI 短語生成 + Gemini 印字
+- **角色動作描述**：每格可附英文 pose（例 `slumped at desk, weary look`），無字模式特別關鍵
 - **單格客製重抽**：點任一格可改字再重抽（會耗 1 次 API quota）
 
 ### 畫風
@@ -109,7 +109,7 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
 - 攝影 / 寫實（街拍、底片、棚拍、拍立得…）
 - 潮 / 主題（賽博龐克、蒸氣波、Y2K…）
 - 梗圖（Impact 字、napkin 塗鴉…）
-- **✏️ 自訂風格**（任何語言、最少 2 字）
+- **自訂風格**（任何語言、最少 2 字）
 
 > 所有預設均為原創描述，**不含任何品牌、IP、藝人、角色名稱**，避免上架被退件。
 
@@ -117,20 +117,24 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
 
 內建 6 個官方特輯活動 prompt（自動套用對應風格規則 + 投稿說明）：
 
-- 🆕 進行中：**無字浮誇** / **水水** / **眼淚製造機** / **大臉攻擊**
-- 📜 已結束（保留紀錄）：抽象搞笑研究所 / 台味大出巡
+- 進行中：**無字浮誇** / **水水** / **眼淚製造機** / **大臉攻擊**
+- 已結束（保留紀錄）：抽象搞笑研究所 / 台味大出巡
+
+每週一的活動檢查排程會透過自架 gemini-web 的 Google GenAI 相容文字端點抽取候選文章資料。GitHub Actions 需要設定 `GEMINI_WEB_BASE_URL` 與 `GEMINI_API_KEY` 兩個 secrets。前者填 gemini-web 服務根網址，後者填服務核發的 consumer key。
+
+活動回應必須是完整合法的 JSON。非活動文章必須明確回傳 `null`，活動資料必須包含 `id`、`label`、`fullName`、`submitTag`、`submitDeadline`、`bannerPeriod` 與 `blurb`。回應截斷、欄位缺漏或服務錯誤都會讓排程失敗並列出原因，不會被當成「沒有新活動」。
 
 ### 其他
 
-- **📷 相機現拍**：getUserMedia 直接拍照當角色圖
-- **📜 歷史 / 收藏**：所有 grid（AI + BYOG）存在你瀏覽器的 IndexedDB，數量不設限、由你自己管理（篩選 / 收藏 / 重命名 / 刪除）；用量顯示在素材庫，備份走「匯出整庫」
-- **💚 客戶端 chroma-key 去背**：選定的幕色 → α=0、含 despill + 1-pass erosion 修色邊。圖不上傳到任何伺服器
-- **📦 ZIP 直接符合 LINE 規格**：370×320 貼圖 + 240×240 main + 96×74 tab + 上架說明 README
-- **🔄 跨 tab 同步**：BroadcastChannel 即時同步配額，A tab 用了 B tab 立刻看到剩 N 次
-- **🤖 Cloudflare Turnstile**：無感人機驗證、防刷 quota
-- **⚖ LINE 規則確認 gate**：上傳前必須勾選確認，避免上架被退件
+- **相機現拍**：getUserMedia 直接拍照當角色圖
+- **歷史 / 收藏**：所有 grid（AI + BYOG）存在你瀏覽器的 IndexedDB，數量不設限、由你自己管理（篩選 / 收藏 / 重命名 / 刪除）；用量顯示在素材庫，備份走「匯出整庫」
+- **客戶端 chroma-key 去背**：選定的幕色 → α=0、含 despill + 1-pass erosion 修色邊。圖不上傳到任何伺服器
+- **ZIP 直接符合 LINE 規格**：370×320 貼圖 + 240×240 main + 96×74 tab + 上架說明 README
+- **跨 tab 同步**：BroadcastChannel 即時同步配額，A tab 用了 B tab 立刻看到剩 N 次
+- **Cloudflare Turnstile**：無感人機驗證、防刷 quota
+- **LINE 規則確認 gate**：上傳前必須勾選確認，避免上架被退件
 
-## 🏗 架構
+## 架構
 
 ```
 ┌────────────────────────┐         ┌────────────────────────────┐
@@ -155,11 +159,11 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
 - 前端純靜態，掛 GitHub Pages 免費
 - Worker 是 Vertex API 的 proxy + prompt 組合器 + 配額守門員（不存圖、不留 log）
 - 配額計數靠 Cloudflare KV，key 是 `quota:<ip>:<UTC date>`（IP 來自 `CF-Connecting-IP`，Cloudflare 自動帶、外部不可偽造），TTL 36h 自清
-- 一次 AI 生成 = 1 次 worker call → 1 次 Gemini call → 9 個 sticker tiles（給用戶 9 選 8）
+- 一次 AI 生成 = 1 次 worker call → 1 次 Gemini call → 9 個 sticker tiles（給使用者 9 選 8）
 
-## 🔐 防刷機制
+## 防刷機制
 
-**Cloudflare Turnstile + 每 IP 每日配額 + 並發鎖 + 先扣後跑** — 沒有登入。四道防線疊起來。
+**Cloudflare Turnstile + 每 IP 每日配額 + 並發鎖 + 先扣後跑**，無須登入，共有四道防線。
 
 ### Layer 1：Cloudflare Turnstile（擋機器人）
 - 前端載 Turnstile widget（`Managed` mode，多數情況無感），每次 AI 呼叫帶一個 single-use token
@@ -189,15 +193,15 @@ Worker 層有每日免費配額 1 次/IP + 預付額度(兌換碼)+ in-flight �
 ### 管理員 reset
 - `POST /admin/reset-quota` with `Authorization: Bearer <ADMIN_TOKEN>`，body `{"ip":"x.x.x.x"}` 指定 IP（省略 → 用 caller 的 IP）
 
-> 🚫 **沒驗證路徑也限額？** 故意不做。BYOG 路徑（自己用 Gemini 跑）天生不耗 worker 額度、不限次、無 Turnstile；要 AI 產就過一次無感驗證。
+> **沒驗證路徑也限額？** 故意不做。BYOG 路徑（自己用 Gemini 跑）天生不耗 worker 額度、不限次、無 Turnstile；要 AI 產就過一次無感驗證。
 
-## 🛡 內容合規（LINE Creators Market 退件雷區）
+## 內容合規（LINE Creators Market 退件雷區）
 
 Worker 的 prompt 把 LINE [審核準則](https://creator.line.me/zh-hant/review_guideline/) 12 大類退件原因全部寫進 `CONTENT COMPLIANCE` 區塊，模型生圖時就主動避開：
 
 | 類別 | 擋什麼 |
 |---|---|
-| A 肖像權 | 真人明星 / 政治人物 / KOL — 強制畫成原創卡通角色 |
+| A 肖像權 | 真人明星 / 政治人物 / KOL，強制畫成原創卡通角色 |
 | B 版權 IP | Pokemon / Sanrio / Disney / Ghibli / Nintendo / 鬼滅 / 哆啦 A 夢 / Line Friends 自家也禁 / Snoopy / Rilakkuma / Miffy 等 |
 | C 商標 | 真 logo（Chanel CC、LV monogram、Gucci GG、Hermès H、Nike swoosh⋯）+ 假 logo 文字（避免 GUVICY / PRADO 等模型幻覺品牌字） |
 | C+ 包款 silhouette | 即使無 logo，也避開 Hermès Birkin/Kelly turn-lock 鎖扣、Chanel Classic Flap quilted、LV Speedy/Neverfull、Dior Lady、Prada Galleria 三角牌、Gucci Bamboo、Goyard chevron、Fendi Baguette 等可識別輪廓（依台灣新式樣專利範圍） |
@@ -211,11 +215,11 @@ Worker 的 prompt 把 LINE [審核準則](https://creator.line.me/zh-hant/review
 | K 醫療詐騙 | 減肥前後對比、療效宣稱 |
 | L 兒少/動物 | 兒童不當、虐待動物、條碼 |
 
-**「Compliance > style > theme > user wording」** — 即使使用者 prompt 提到禁項，prompt builder 仍然會覆寫。
+**「Compliance > style > theme > user wording」**：即使使用者 prompt 提到禁項，prompt builder 仍會覆寫。
 
 > 雖然不能 100% 保證每張都過審（特別是包款 silhouette 是 grey area），但同個 prompt 比沒有 compliance block 之前安全度高 5~10 倍。實際上架被退件的話 LINE 會列具體理由，再針對該張重抽即可。
 
-## 🚀 本地開發
+## 本地開發
 
 需要 Node.js 18+。
 
@@ -242,7 +246,7 @@ python3 -m http.server 8765
 localStorage.setItem('line-sticker-api-url', 'http://127.0.0.1:8787');
 ```
 
-## ☁️ 部署
+## 部署
 
 ### 1. Worker → Cloudflare
 
@@ -280,21 +284,21 @@ git push origin main   # GitHub Pages 從 main branch 自動 deploy
 
 如果 worker URL 不是 `line-sticker-gemini.yazelinj303.workers.dev`，改 `app.js` 的 `DEFAULT_API_URL`。
 
-## 💰 成本
+## 成本
 
 | 場景 | 你的成本 |
 |---|---|
-| 用戶按「開始生成」（AI 路徑） | ~USD 0.04 / IP / 次（免費最高 1 次/天，額度另計） |
+| 使用者按「開始生成」（AI 路徑） | ~USD 0.04 / IP / 次（免費最高 1 次/天，額度另計） |
 | AI 主題產生器（gemini-2.5-flash） | ~USD 0.0005 / 次 |
-| 用戶按「複製 prompt → 自己到 Gemini 跑 → 回來上傳」| **0** |
-| 用戶 BYOG（直接傳自己準備好的 3×3）| **0** |
+| 使用者按「複製 prompt → 自己到 Gemini 跑 → 回來上傳」| **0** |
+| 使用者 BYOG（直接傳自己準備好的 3×3）| **0** |
 | 前端去背 / ZIP 打包 / IndexedDB 歷史 | 0（瀏覽器算 + 瀏覽器存） |
 | KV 配額讀寫 + Turnstile siteverify | 在 Cloudflare free tier 內 |
 
 最壞情況：100 個 IP 每天用滿免費 1 次 = 100 次 = ~USD 4/天 = ~USD 120/月；付費額度自帶對應收入。
 真擔心被刷爆可以調低 `DAILY_LIMIT` 或在 worker 前套 Cloudflare Rate Limiting。
 
-## 📁 檔案結構
+## 檔案結構
 
 ```
 .
@@ -311,17 +315,17 @@ git push origin main   # GitHub Pages 從 main branch 自動 deploy
         └── index.js  # prompt 組合器、Gemini proxy、auth、quota、CAMPAIGNS、STYLE_PRESETS
 ```
 
-## 🧪 測試
+## 測試
 
 ```bash
 npm install
 npx playwright install chromium   # 第一次
-npm test                          # 桌面 + iPhone 模擬雙 project
+npm test                          # 不連網單元測試與桌面、iPhone 模擬器測試
 ```
 
 外部依賴（worker API / Turnstile / 字型）在測試中全部 stub，可離線執行。
 CI（GitHub Actions）在每個 PR 與 main push 跑全套。
 
-## 📄 授權
+## 授權
 
-MIT — 自由使用、改、商用。產出的貼圖版權歸**使用者**所有（你只是工具人）。
+MIT：自由使用、修改與商用。產出的貼圖版權歸**使用者**所有（你只是工具人）。

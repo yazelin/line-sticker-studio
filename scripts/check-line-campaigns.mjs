@@ -1,55 +1,59 @@
 #!/usr/bin/env node
-// Check LINE Creators Magazine for new sticker-pack campaigns and append
-// any new entries to worker/src/campaigns.json. Designed to run as a
-// GitHub Action; opens a PR with the diff so a human can fill in the
-// hand-crafted `extraPromptInstruction` and `forceStyleHint` fields
-// before merging.
+// 檢查 LINE Creators Magazine 是否刊出新的貼圖特輯活動，並將候選資料
+// 附加到 worker/src/campaigns.json。GitHub Actions 會依差異開 PR，供人工
+// 補上 extraPromptInstruction 與 forceStyleHint 後再合併。
 //
-// Env vars:
-//   GEMINI_API_KEY   — required, used to extract structured metadata from
-//                      a campaign blog post (gemini-2.5-flash, ~free).
+// 必要環境變數：GEMINI_WEB_BASE_URL 與 GEMINI_API_KEY。
 //
-// Output:
-//   - Mutates ../worker/src/campaigns.json in place if new campaigns found
-//   - Writes ../.github/campaign-pr-body.md (consumed by the workflow)
-//   - Exits 0 always; the workflow checks `git diff --quiet` to decide
-//     whether to open a PR.
+// 輸出：找到新活動時更新 worker/src/campaigns.json，並寫入
+// .github/campaign-pr-body.md。找不到新活動時不修改檔案。
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createGeminiWebJsonClient } from "./gemini-web-client.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const CAMPAIGNS_PATH = path.join(REPO_ROOT, "worker", "src", "campaigns.json");
 const PR_BODY_PATH = path.join(REPO_ROOT, ".github", "campaign-pr-body.md");
 
-// Listing page that aggregates LINE Creators Magazine TW posts. We scan
-// it for article URLs matching /archives/<digits>.html that mention
-// 「徵稿」 or 「特輯」 in the surrounding HTML.
+// LINE Creators Magazine 台灣文章彙整頁。從周邊 HTML 找出符合
+// /archives/<數字>.html 格式，且提到「徵稿」或「特輯」的文章連結。
 const LISTING_URL = "https://creator-mag-tw.weblog.to/";
 
+const GEMINI_WEB_BASE_URL = process.env.GEMINI_WEB_BASE_URL;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_API_KEY) {
-  console.error("GEMINI_API_KEY env var is required");
+const missingSecrets = [
+  ["GEMINI_WEB_BASE_URL", GEMINI_WEB_BASE_URL],
+  ["GEMINI_API_KEY", GEMINI_API_KEY],
+].filter(([, value]) => !value).map(([name]) => name);
+if (missingSecrets.length > 0) {
+  console.error(
+    `缺少必要環境變數：${missingSecrets.join("、")}。請在 GitHub 儲存庫設定 secrets：GEMINI_WEB_BASE_URL 與 GEMINI_API_KEY。`,
+  );
   process.exit(1);
 }
 
-// ---- Step 1: read existing campaigns ---------------------------------
+const geminiWebJson = createGeminiWebJsonClient({
+  baseUrl: GEMINI_WEB_BASE_URL,
+  apiKey: GEMINI_API_KEY,
+});
+
+// 第一步：讀取既有活動資料。
 
 const existing = JSON.parse(await fs.readFile(CAMPAIGNS_PATH, "utf8"));
 const knownUrls = new Set(existing.map((c) => c.articleUrl));
-console.log(`Loaded ${existing.length} existing campaigns`);
+console.log(`已載入 ${existing.length} 個既有活動`);
 
-// ---- Step 2: fetch listing, extract candidate article URLs -----------
+// 第二步：讀取活動列表並擷取候選文章網址。
 
-console.log(`Fetching listing: ${LISTING_URL}`);
+console.log(`正在擷取活動列表：${LISTING_URL}`);
 const listingHtml = await fetchText(LISTING_URL);
 
-// Find all /archives/<id>.html links along with ~200 chars of surrounding
-// context so we can filter to ones that look like sticker-pack 特輯/徵稿.
+// 找出 /archives/<id>.html 連結與周邊文字，再篩選貼圖特輯或徵稿活動。
 const linkRe = /href=["']([^"']*\/archives\/(\d+)\.html)["'][^>]*>([\s\S]{0,400})/g;
-const candidates = new Map(); // url → context snippet
+const candidates = new Map(); // 網址對應周邊文字。
 let m;
 while ((m = linkRe.exec(listingHtml)) !== null) {
   let url = m[1];
@@ -58,31 +62,31 @@ while ((m = linkRe.exec(listingHtml)) !== null) {
   }
   if (knownUrls.has(url)) continue;
   const context = m[3].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  // Filter heuristic: must mention sticker / 貼圖 + 特輯 or 徵稿
+  // 候選文章必須同時提到貼圖，以及特輯、徵稿或徵集。
   if (!/貼圖|sticker/i.test(context)) continue;
   if (!/特輯|徵稿|徵集/.test(context)) continue;
   if (!candidates.has(url)) candidates.set(url, context);
 }
 
-console.log(`Found ${candidates.size} candidate article URL(s) not in campaigns.json`);
+console.log(`找到 ${candidates.size} 篇尚未收錄的候選文章`);
 if (candidates.size === 0) {
-  console.log("No new campaigns. Exiting cleanly.");
+  console.log("沒有新活動，檢查完成。");
   process.exit(0);
 }
 
-// ---- Step 3: for each candidate, fetch + extract via Gemini ----------
+// 第三步：讀取候選文章並透過 gemini-web 擷取活動資料。
 
 const additions = [];
 for (const [url, context] of candidates) {
-  console.log(`Fetching candidate: ${url}`);
+  console.log(`正在擷取候選文章：${url}`);
   let articleHtml;
   try {
     articleHtml = await fetchText(url);
   } catch (err) {
-    console.warn(`  skip (fetch failed): ${err.message}`);
+    console.warn(`  略過，文章擷取失敗：${err.message}`);
     continue;
   }
-  // Strip down to <body> text-ish — keep it under ~10K chars for the LLM.
+  // 移除 HTML 標籤與程式區塊，並將文章內容限制在 10,000 個字元內。
   const bodyText = articleHtml
     .replace(/<script[\s\S]*?<\/script>/g, "")
     .replace(/<style[\s\S]*?<\/style>/g, "")
@@ -92,66 +96,67 @@ for (const [url, context] of candidates) {
     .trim()
     .slice(0, 10_000);
 
-  const extracted = await extractCampaignViaGemini(url, bodyText);
+  let extracted;
+  try {
+    extracted = await extractCampaignViaGemini(bodyText);
+  } catch (error) {
+    console.error(`  gemini-web 活動資料抽取失敗：${error.message}`);
+    process.exit(1);
+  }
   if (!extracted) {
-    console.warn(`  skip (Gemini did not extract a clean campaign object)`);
+    console.warn("  略過，模型判斷文章不是貼圖特輯活動。");
     continue;
   }
-  // Sanity-check minimum required fields
-  if (!extracted.id || !extracted.label || !extracted.submitDeadline) {
-    console.warn(`  skip (missing required fields)`, extracted);
-    continue;
-  }
-  // Default the human-curated fields so the PR has obvious TODO markers.
+  // 預填需要人工整理的欄位，讓 PR 清楚標出後續工作。
   extracted.articleUrl = url;
   extracted.forceWithText ??= null;
   extracted.forceStyleHint ??= null;
   extracted.extraPromptInstruction ??=
-    `TODO(human): write English CAMPAIGN OVERRIDE rules for 「${extracted.fullName || extracted.label}」`;
+    `TODO(human)：請為「${extracted.fullName || extracted.label}」撰寫英文活動規則`;
   additions.push(extracted);
-  console.log(`  + ${extracted.id} / ${extracted.label}`);
+  console.log(`  新增候選活動：${extracted.id}／${extracted.label}`);
 }
 
 if (additions.length === 0) {
-  console.log("No campaigns extracted. Exiting cleanly.");
+  console.log("沒有新活動，檢查完成。");
   process.exit(0);
 }
 
-// ---- Step 4: append + write back -------------------------------------
+// 第四步：合併新活動並寫回檔案。
 
 const merged = existing.concat(additions);
 await fs.writeFile(CAMPAIGNS_PATH, JSON.stringify(merged, null, 2) + "\n", "utf8");
-console.log(`Wrote ${merged.length} campaigns (${additions.length} new) to campaigns.json`);
+console.log(`已將 ${additions.length} 個新活動寫入 campaigns.json，目前共 ${merged.length} 個活動`);
 
-// ---- Step 5: build PR body for the workflow --------------------------
+// 第五步：準備工作流程建立 PR 時使用的說明。
 
 const prBody = [
-  `Found **${additions.length}** new LINE Creators Market campaign(s) to review:`,
+  `找到 **${additions.length} 個**新的 LINE Creators Market 特輯活動，請人工審查：`,
   "",
   ...additions.map((c) =>
-    `- **${c.label}** (\`${c.id}\`) — submit deadline \`${c.submitDeadline}\`\n` +
-    `  - 📄 [Article](${c.articleUrl})\n` +
-    `  - blurb: ${c.blurb || "_(none)_"}`
+    `- **${c.label}**（\`${c.id}\`），投稿截止日：\`${c.submitDeadline}\`\n` +
+    `  - [活動文章](${c.articleUrl})\n` +
+    `  - 活動簡介：${c.blurb}`
   ),
   "",
-  "## ✅ Before merging, please:",
+  "## 合併前請完成以下審查：",
   "",
-  "1. Open `worker/src/campaigns.json`, scroll to the new entries at the bottom.",
-  "2. **Replace `extraPromptInstruction`** — replace the `TODO(human)` placeholder with the carefully-crafted English rule block (mimic existing campaigns' style). This is the single most impactful field.",
-  "3. **Set `forceStyleHint`** if the campaign demands a specific look (e.g. `cute_chibi` for 水水).",
-  "4. **Set `forceWithText`** to `false` if the campaign forbids text; `true` if it requires; `null` if either is fine.",
-  "5. Optionally tweak `label` / `blurb` / `submitTag` if Gemini's extraction missed nuance.",
-  "6. Verify the deadline format is `YYYY-MM-DD`.",
+  "1. 開啟 `worker/src/campaigns.json`，檢查檔案底部新增的活動資料。",
+  "2. **改寫 `extraPromptInstruction`**，以既有活動格式撰寫英文規則，取代 `TODO(human)`。",
+  "3. 若活動要求特定畫風，設定 `forceStyleHint`，例如水水活動使用 `cute_chibi`。",
+  "4. 禁止文字時將 `forceWithText` 設為 `false`；要求文字時設為 `true`；皆可時設為 `null`。",
+  "5. 視需要修正 `label`、`blurb` 或 `submitTag`。",
+  "6. 確認投稿截止日格式為 `YYYY-MM-DD`。",
   "",
-  "After review, deploy worker (`cd worker && npx wrangler deploy`).",
+  "審查完成後部署 Worker：`cd worker && npx wrangler deploy`。",
   "",
-  "_Auto-generated by `.github/workflows/check-line-campaigns.yml`._",
+  "_由 `.github/workflows/check-line-campaigns.yml` 自動產生。_",
 ].join("\n");
 
 await fs.writeFile(PR_BODY_PATH, prBody, "utf8");
-console.log(`Wrote PR body to ${PR_BODY_PATH}`);
+console.log(`已寫入 PR 說明：${PR_BODY_PATH}`);
 
-// ---- helpers ---------------------------------------------------------
+// 輔助函式：讀取網頁與組成模型提示。
 
 async function fetchText(url) {
   const r = await fetch(url, {
@@ -160,49 +165,29 @@ async function fetchText(url) {
         "Mozilla/5.0 (compatible; line-sticker-studio-campaign-checker/1.0; +https://github.com/yazelin/line-sticker-studio)",
     },
   });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+  if (!r.ok) throw new Error(`網頁讀取失敗（HTTP ${r.status} ${r.statusText}）`);
   return await r.text();
 }
 
-async function extractCampaignViaGemini(url, bodyText) {
+async function extractCampaignViaGemini(bodyText) {
   const prompt = `你是 LINE Creators Magazine 文章解析助手。以下是一篇文章內容，請判斷它是否在介紹一個「LINE 貼圖（sticker）特輯活動」並擷取結構化資料。
 
-如果文章不是貼圖特輯（例如：是表情貼/sticon 特輯、是其他類型公告、是教學文）→ 回 \`null\`。
-如果是 → 回一個 JSON 物件，欄位：
-- "id": 短英文 snake_case id (5-25 chars)，從活動主題歸納，例如 "no_text", "watery", "big_face"
-- "label": 短中文標籤 (4-15 chars)，例如「無字浮誇」「水水」
-- "fullName": 文章中的完整活動名稱 (10-40 chars)
-- "submitTag": LINE 編輯器中對應的投稿活動 tag (通常等於 fullName 或近似)
-- "submitDeadline": "YYYY-MM-DD" 格式 (找「投稿截止」「徵稿期限」等關鍵字)
-- "bannerPeriod": "YYYY/MM/DD ~ MM/DD" 格式 (找「Banner 露出期」「曝光期」等關鍵字)，找不到就填 "未公布"
-- "blurb": 一句話 (10-40 字) 說明這個特輯要的風格特徵 (用繁中)
+如果文章不是貼圖特輯，例如表情貼（sticon）特輯、其他類型公告或教學文，請回傳 JSON \`null\`。
+如果文章是貼圖特輯，請回傳 JSON 物件，並提供以下所有欄位：
+- "id"：5 至 25 個字元的英文 snake_case 識別碼，依活動主題歸納，例如 "no_text"、"watery"、"big_face"。
+- "label"：4 至 15 個中文字的簡短標籤，例如「無字浮誇」或「水水」。
+- "fullName"：文章中的完整活動名稱，10 至 40 個字元。
+- "submitTag"：LINE 編輯器中的投稿活動標籤，通常等於 fullName 或與其近似。
+- "submitDeadline"："YYYY-MM-DD" 格式，從「投稿截止」或「徵稿期限」等資訊判斷。
+- "bannerPeriod"："YYYY/MM/DD ~ MM/DD" 格式，從 Banner 露出期或曝光期判斷；找不到時填 "未公布"。
+- "blurb"：以繁體中文寫一句 10 至 40 字的風格特徵說明。
 
-文章內容（已 strip HTML）：
+文章內容（已移除 HTML 標籤）：
 """
 ${bodyText}
 """
 
-只回 JSON 物件 (或 null)，無 markdown wrapping、無多餘文字。`;
+只回傳 JSON 物件或 null，不要加上 Markdown 程式碼區塊或其他文字。`;
 
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-  const r = await fetch(apiUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json" },
-    }),
-  });
-  if (!r.ok) {
-    console.warn(`  Gemini error: HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
-    return null;
-  }
-  const data = await r.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "null";
-  let parsed;
-  try { parsed = JSON.parse(text); } catch {
-    const obj = text.match(/\{[\s\S]*\}/);
-    parsed = obj ? JSON.parse(obj[0]) : null;
-  }
-  return parsed && typeof parsed === "object" ? parsed : null;
+  return await geminiWebJson(prompt);
 }
