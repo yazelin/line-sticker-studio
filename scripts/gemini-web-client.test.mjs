@@ -137,3 +137,9 @@ test("只有明確的 JSON null 代表不是活動文章", async () => {
 
   assert.equal(await client("prompt"), null);
 });
+
+test("截止日格式不對時丟出可辨識的單篇驗證錯誤", async () => {
+  const { validateCampaignResult, CampaignValidationError } = await import("./gemini-web-client.mjs");
+  const bad = { id: "x", label: "x", fullName: "x", submitTag: "x", submitDeadline: "未公布", bannerPeriod: "x", blurb: "x" };
+  assert.throws(() => validateCampaignResult(bad), (e) => e instanceof CampaignValidationError && e.name === "CampaignValidationError");
+});

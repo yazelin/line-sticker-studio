@@ -77,6 +77,7 @@ if (candidates.size === 0) {
 // 第三步：讀取候選文章並透過 gemini-web 擷取活動資料。
 
 const additions = [];
+const skippedArticles = [];
 for (const [url, context] of candidates) {
   console.log(`正在擷取候選文章：${url}`);
   let articleHtml;
@@ -100,6 +101,13 @@ for (const [url, context] of candidates) {
   try {
     extracted = await extractCampaignViaGemini(bodyText);
   } catch (error) {
+    // 單篇內容不合格式（例如截止日不是 YYYY-MM-DD）：跳過這一篇，其餘照常處理。
+    // 服務連不上、回應截斷等其他錯誤仍然中止，避免誤判成「這週沒有活動」。
+    if (error.name === "CampaignValidationError") {
+      console.warn(`::warning::略過 ${url}：${error.message}`);
+      skippedArticles.push({ url, reason: error.message });
+      continue;
+    }
     console.error(`  gemini-web 活動資料抽取失敗：${error.message}`);
     process.exit(1);
   }

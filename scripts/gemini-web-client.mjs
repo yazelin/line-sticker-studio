@@ -91,26 +91,35 @@ export function createGeminiWebJsonClient({
   };
 }
 
+// 模型有回應、但這一篇抽出來的內容不合格式。這是單篇文章的問題，
+// 呼叫端可以跳過這一篇繼續；服務連不上、回應截斷這類錯誤不用這個類別。
+export class CampaignValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "CampaignValidationError";
+  }
+}
+
 export function validateCampaignResult(value) {
   if (value === null) return null;
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("模型回應必須是活動 JSON 物件或 null。");
+    throw new CampaignValidationError("模型回應必須是活動 JSON 物件或 null。");
   }
 
   const missingFields = REQUIRED_CAMPAIGN_FIELDS.filter(
     (field) => !Object.hasOwn(value, field),
   );
   if (missingFields.length > 0) {
-    throw new Error(`活動 JSON 缺少必要欄位：${missingFields.join("、")}。`);
+    throw new CampaignValidationError(`活動 JSON 缺少必要欄位：${missingFields.join("、")}。`);
   }
 
   for (const field of REQUIRED_CAMPAIGN_FIELDS) {
     if (typeof value[field] !== "string" || !value[field].trim()) {
-      throw new Error(`活動 JSON 欄位 ${field} 必須是非空字串。`);
+      throw new CampaignValidationError(`活動 JSON 欄位 ${field} 必須是非空字串。`);
     }
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value.submitDeadline)) {
-    throw new Error("活動 JSON 欄位 submitDeadline 必須使用 YYYY-MM-DD 格式。");
+    throw new CampaignValidationError("活動 JSON 欄位 submitDeadline 必須使用 YYYY-MM-DD 格式。");
   }
 
   return value;
