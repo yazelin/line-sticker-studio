@@ -11,9 +11,21 @@
     "forceWithText": true,
     "forceStyleHint": null,
     "phrasePoolOverride": [
-      "是在哈囉", "真的假的", "傻眼", "母湯", "拍謝",
-      "好家在", "也太扯", "不然呢", "沒在怕", "我就爛",
-      "隨便啦", "呷飽沒", "蛤", "累了", "走啦"
+      "是在哈囉",
+      "真的假的",
+      "傻眼",
+      "母湯",
+      "拍謝",
+      "好家在",
+      "也太扯",
+      "不然呢",
+      "沒在怕",
+      "我就爛",
+      "隨便啦",
+      "呷飽沒",
+      "蛤",
+      "累了",
+      "走啦"
     ],
     "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「台灣人的口頭禪貼圖特輯」: Every single cell MUST display one everyday Taiwanese catchphrase in Traditional Chinese characters, rendered LARGE and clearly readable at chat-thumbnail size. The character's facial expression and body language must match the tone of that specific phrase — exasperated, deadpan, delighted, resigned, defiant. Aim for the casual local texture of daily conversation in Taiwan: the phrases people actually type in LINE, including Taiwanese-Hokkien-flavored ones. Keep the text placement clean and never covering the face. NO names, NO nicknames, NO real-person likeness anywhere."
   },
@@ -55,9 +67,21 @@
     "forceWithText": null,
     "forceStyleHint": null,
     "phrasePoolOverride": [
-      "哭哭", "嗚嗚", "想哭", "委屈", "淚崩",
-      "笑到流淚", "我錯了", "對不起", "求求你", "別這樣",
-      "心碎了", "抱抱", "好難過", "別走", "嗚嗚嗚"
+      "哭哭",
+      "嗚嗚",
+      "想哭",
+      "委屈",
+      "淚崩",
+      "笑到流淚",
+      "我錯了",
+      "對不起",
+      "求求你",
+      "別這樣",
+      "心碎了",
+      "抱抱",
+      "好難過",
+      "別走",
+      "嗚嗚嗚"
     ],
     "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「眼淚製造機表情貼特輯」: EVERY single cell MUST clearly show tears or watery eyes. Vary the type — choose from: full sobbing tear streams down both cheeks, single tear running down one cheek, eyes welling up shimmering with unshed tears, laugh-tears at the corners of squeezed-shut eyes, comical waterfall tears spraying out, sparkly cute tear dots. Tears should be obvious even at chat-thumbnail size. The 9 cells must vary the tear type AND the matching emotion (sad / overwhelmed / laughing / sorry / pleading) — no two cells with identical tear placement."
   },
@@ -99,5 +123,31 @@
     "forceWithText": null,
     "forceStyleHint": null,
     "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「台味大出巡」: Strong Taiwanese cultural flavor in every cell — choose ONE of: (A) deities/folk-religion characters (Mazu, Lord Guan, Tudigong, lion dancers, Bā jiā jiàng) doing modern relatable things; (B) Taiwanese daily-life moments (boba tea, scooter culture, night-market food, betel-nut stand vibe, electric fans in hot weather, cartoony 7-11 vibes). Keep the look colorful and inviting."
+  },
+  {
+    "id": "romantic_daily_life",
+    "label": "我們的戀愛日常",
+    "fullName": "我們的戀愛日常貼圖特輯",
+    "submitTag": "我們的戀愛日常貼圖特輯",
+    "submitDeadline": "2026-12-13",
+    "bannerPeriod": "2026/12/16 ~ 12/29",
+    "blurb": "描繪曖昧試探、甜蜜放閃、撒嬌傲嬌與吃醋鬧彆扭等真實戀愛互動日常。",
+    "articleUrl": "https://creator-mag-tw.weblog.to/archives/31581285.html",
+    "forceWithText": null,
+    "forceStyleHint": null,
+    "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「我們的戀愛日常貼圖特輯」: At least 8 of the 9 cells must show an action or a line that is clearly about being in love. Cover the range of everyday romance instead of repeating one mood: shy flirting and testing the waters, sweet showing-off, clingy asking for a hug, saying \"I'm fine\" while obviously not fine, jealous sulking, waiting to be coaxed. Let expression and body language carry the feeling — blushing cheeks, sideways glances, puffed cheeks, arms reaching out. If the pack has text, keep each line short and usable in a real chat. Warm, soft palette. NO names, NO nicknames anywhere."
+  },
+  {
+    "id": "confident_hot_girl",
+    "label": "自信辣妹",
+    "fullName": "怪可愛的！自信辣妹貼圖特輯",
+    "submitTag": "怪可愛的！自信辣妹貼圖特輯",
+    "submitDeadline": "2026-10-18",
+    "bannerPeriod": "2026/10/21 ~ 11/03",
+    "blurb": "結合Y2K潮流與潦草手繪風，打造自信又具個人特特色的辣妹角色貼圖。",
+    "articleUrl": "https://creator-mag-tw.weblog.to/archives/31300691.html",
+    "forceWithText": null,
+    "forceStyleHint": null,
+    "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「怪可愛的！自信辣妹貼圖特輯」: At least 8 of the 9 cells must read as either Y2K-style confident \"hot girl\" or humorous, chill scribble style. Choose ONE direction for the whole pack: (A) a confident, mischievous, slightly self-absorbed character with Y2K elements — bright saturated colors, bold outfits, long-leg proportions, butterflies, hearts, metallic accents; or (B) loose, deliberately rough hand-drawn doodle lines with a deadpan or teasing attitude. Attitude is the point: the character looks sure of itself in every cell. NO names, NO nicknames anywhere."
   }
 ]
