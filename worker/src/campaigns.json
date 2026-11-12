@@ -125,19 +125,6 @@
     "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「台味大出巡」: Strong Taiwanese cultural flavor in every cell — choose ONE of: (A) deities/folk-religion characters (Mazu, Lord Guan, Tudigong, lion dancers, Bā jiā jiàng) doing modern relatable things; (B) Taiwanese daily-life moments (boba tea, scooter culture, night-market food, betel-nut stand vibe, electric fans in hot weather, cartoony 7-11 vibes). Keep the look colorful and inviting."
   },
   {
-    "id": "arena_of_valor",
-    "label": "Garena 傳說對決",
-    "fullName": "Garena 傳說對決貼圖特輯",
-    "submitTag": "Garena 傳說對決貼圖特輯",
-    "submitDeadline": "2027-10-31",
-    "bannerPeriod": "2026/10/22 ~ 2028/04/30",
-    "blurb": "以個人畫風重新詮釋傳說對決人氣英雄，或讓原創角色與英雄跨界同框。",
-    "articleUrl": "https://creator-mag-tw.weblog.to/archives/31631334.html",
-    "forceWithText": null,
-    "forceStyleHint": null,
-    "extraPromptInstruction": "TODO(human)：請為「Garena 傳說對決貼圖特輯」撰寫英文活動規則"
-  },
-  {
     "id": "romantic_daily_life",
     "label": "我們的戀愛日常",
     "fullName": "我們的戀愛日常貼圖特輯",
@@ -148,7 +135,7 @@
     "articleUrl": "https://creator-mag-tw.weblog.to/archives/31581285.html",
     "forceWithText": null,
     "forceStyleHint": null,
-    "extraPromptInstruction": "TODO(human)：請為「我們的戀愛日常貼圖特輯」撰寫英文活動規則"
+    "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「我們的戀愛日常貼圖特輯」: At least 8 of the 9 cells must show an action or a line that is clearly about being in love. Cover the range of everyday romance instead of repeating one mood: shy flirting and testing the waters, sweet showing-off, clingy asking for a hug, saying \"I'm fine\" while obviously not fine, jealous sulking, waiting to be coaxed. Let expression and body language carry the feeling — blushing cheeks, sideways glances, puffed cheeks, arms reaching out. If the pack has text, keep each line short and usable in a real chat. Warm, soft palette. NO names, NO nicknames anywhere."
   },
   {
     "id": "confident_hot_girl",
@@ -161,6 +148,6 @@
     "articleUrl": "https://creator-mag-tw.weblog.to/archives/31300691.html",
     "forceWithText": null,
     "forceStyleHint": null,
-    "extraPromptInstruction": "TODO(human)：請為「怪可愛的！自信辣妹貼圖特輯」撰寫英文活動規則"
+    "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「怪可愛的！自信辣妹貼圖特輯」: At least 8 of the 9 cells must read as either Y2K-style confident \"hot girl\" or humorous, chill scribble style. Choose ONE direction for the whole pack: (A) a confident, mischievous, slightly self-absorbed character with Y2K elements — bright saturated colors, bold outfits, long-leg proportions, butterflies, hearts, metallic accents; or (B) loose, deliberately rough hand-drawn doodle lines with a deadpan or teasing attitude. Attitude is the point: the character looks sure of itself in every cell. NO names, NO nicknames anywhere."
   }
 ]
