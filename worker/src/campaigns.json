@@ -130,25 +130,12 @@
     "fullName": "Garena 傳說對決貼圖特輯",
     "submitTag": "Garena 傳說對決貼圖特輯",
     "submitDeadline": "2027-10-31",
-    "bannerPeriod": "2026/10/22 ~ 04/30",
+    "bannerPeriod": "2026/10/22 ~ 2028/04/30",
     "blurb": "以個人畫風重新詮釋傳說對決人氣英雄，或讓原創角色與英雄跨界同框。",
     "articleUrl": "https://creator-mag-tw.weblog.to/archives/31631334.html",
     "forceWithText": null,
     "forceStyleHint": null,
     "extraPromptInstruction": "TODO(human)：請為「Garena 傳說對決貼圖特輯」撰寫英文活動規則"
-  },
-  {
-    "id": "arena_of_valor",
-    "label": "傳說對決",
-    "fullName": "Garena 傳說對決原創貼圖特輯",
-    "submitTag": "Garena 傳說對決原創貼圖特輯",
-    "submitDeadline": "2026-11-08",
-    "bannerPeriod": "未公布",
-    "blurb": "結合英雄經典台詞與玩家遊戲用語，展現專屬傳說對決的熱血與日常！",
-    "articleUrl": "https://creator-mag-tw.weblog.to/archives/31706001.html",
-    "forceWithText": null,
-    "forceStyleHint": null,
-    "extraPromptInstruction": "TODO(human)：請為「Garena 傳說對決原創貼圖特輯」撰寫英文活動規則"
   },
   {
     "id": "romantic_daily_life",
