@@ -149,5 +149,18 @@
     "forceWithText": null,
     "forceStyleHint": null,
     "extraPromptInstruction": "CAMPAIGN OVERRIDE — 「怪可愛的！自信辣妹貼圖特輯」: At least 8 of the 9 cells must read as either Y2K-style confident \"hot girl\" or humorous, chill scribble style. Choose ONE direction for the whole pack: (A) a confident, mischievous, slightly self-absorbed character with Y2K elements — bright saturated colors, bold outfits, long-leg proportions, butterflies, hearts, metallic accents; or (B) loose, deliberately rough hand-drawn doodle lines with a deadpan or teasing attitude. Attitude is the point: the character looks sure of itself in every cell. NO names, NO nicknames anywhere."
+  },
+  {
+    "id": "arena_of_valor",
+    "label": "傳說對決聯名",
+    "fullName": "Garena 傳說對決貼圖特輯",
+    "submitTag": "Garena 傳說對決貼圖特輯",
+    "submitDeadline": "2027-10-31",
+    "bannerPeriod": "2026/10/22 ~ 2028/04/30",
+    "blurb": "以個人畫風重新詮釋傳說對決英雄，或讓原創角色與英雄同框組隊並結合揪團日常。",
+    "articleUrl": "https://creator-mag-tw.weblog.to/archives/31631334.html",
+    "forceWithText": null,
+    "forceStyleHint": null,
+    "extraPromptInstruction": "TODO(human)：請為「Garena 傳說對決貼圖特輯」撰寫英文活動規則"
   }
 ]
