@@ -143,3 +143,22 @@ test("截止日格式不對時丟出可辨識的單篇驗證錯誤", async () =>
   const bad = { id: "x", label: "x", fullName: "x", submitTag: "x", submitDeadline: "未公布", bannerPeriod: "x", blurb: "x" };
   assert.throws(() => validateCampaignResult(bad), (e) => e instanceof CampaignValidationError && e.name === "CampaignValidationError");
 });
+
+test("bannerPeriod 缺年份時丟出單篇驗證錯誤，未公布與完整年份通過", async () => {
+  const { validateCampaignResult, CampaignValidationError } = await import("./gemini-web-client.mjs");
+  const base = { ...campaign };
+  assert.throws(() => validateCampaignResult({ ...base, bannerPeriod: "10/22 ~ 11/03" }), CampaignValidationError);
+  assert.throws(() => validateCampaignResult({ ...base, bannerPeriod: "2026/10/22 ~ 2028/04/30 前後" }), CampaignValidationError);
+  assert.ok(validateCampaignResult({ ...base, bannerPeriod: "未公布" }));
+  assert.ok(validateCampaignResult({ ...base, bannerPeriod: "2026/10/22 ~ 11/03" }));
+  assert.ok(validateCampaignResult({ ...base, bannerPeriod: "2026/10/22 ~ 2028/04/30" }));
+});
+
+test("同一代號、名稱或投稿標籤視為重複活動", async () => {
+  const { findDuplicateCampaign } = await import("./gemini-web-client.mjs");
+  const known = [campaign];
+  assert.equal(findDuplicateCampaign({ ...campaign, fullName: "別的", submitTag: "別的" }, known), campaign);
+  assert.equal(findDuplicateCampaign({ ...campaign, id: "other", submitTag: "別的" }, known), campaign);
+  assert.equal(findDuplicateCampaign({ ...campaign, id: "other", fullName: "別的" }, known), campaign);
+  assert.equal(findDuplicateCampaign({ ...campaign, id: "other", fullName: "別的", submitTag: "別的" }, known), null);
+});
