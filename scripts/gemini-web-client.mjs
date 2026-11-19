@@ -122,5 +122,29 @@ export function validateCampaignResult(value) {
     throw new CampaignValidationError("活動 JSON 欄位 submitDeadline 必須使用 YYYY-MM-DD 格式。");
   }
 
+  if (
+    value.bannerPeriod !== "未公布" &&
+    !/^\d{4}\/\d{2}\/\d{2} ~ (\d{4}\/)?\d{2}\/\d{2}$/.test(value.bannerPeriod)
+  ) {
+    throw new CampaignValidationError(
+      "活動 JSON 欄位 bannerPeriod 必須是「YYYY/MM/DD ~ MM/DD」（起日帶完整年份，跨年時迄日也帶年份），或「未公布」。",
+    );
+  }
+
   return value;
+}
+
+// 判斷新抽出的活動是不是已經收過：同一個代號、同一個活動名稱或同一個投稿標籤，
+// 都算同一檔活動（例如同一檔活動的靈感整理文會抽出相同代號）。
+// 回傳重複的那一筆既有活動，沒有重複回傳 null。
+export function findDuplicateCampaign(candidate, known) {
+  const norm = (v) => String(v ?? "").replace(/\s+/g, "").toLowerCase();
+  return (
+    known.find(
+      (k) =>
+        norm(k.id) === norm(candidate.id) ||
+        norm(k.fullName) === norm(candidate.fullName) ||
+        norm(k.submitTag) === norm(candidate.submitTag),
+    ) ?? null
+  );
 }
