@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 檢查 LINE Creators Magazine 是否刊出新的貼圖特輯活動，並將候選資料
 // 附加到 worker/src/campaigns.json。GitHub Actions 會依差異開 PR，供人工
-// 補上 extraPromptInstruction 與 forceStyleHint 後再合併。
+// 補上 extraPromptInstruction（預設空值 null）與 forceStyleHint 後再合併。
 //
 // 必要環境變數：GEMINI_WEB_BASE_URL 與 GEMINI_API_KEY。
 //
@@ -11,7 +11,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createGeminiWebJsonClient } from "./gemini-web-client.mjs";
+import { createGeminiWebJsonClient, findDuplicateCampaign } from "./gemini-web-client.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -115,12 +115,19 @@ for (const [url, context] of candidates) {
     console.warn("  略過，模型判斷文章不是貼圖特輯活動。");
     continue;
   }
-  // 預填需要人工整理的欄位，讓 PR 清楚標出後續工作。
+  // 同一檔活動只收一筆：代號、名稱或投稿標籤跟既有活動或本輪已收的相同就略過。
+  const duplicate = findDuplicateCampaign(extracted, [...existing, ...additions]);
+  if (duplicate) {
+    console.warn(`::warning::略過 ${url}：與既有活動「${duplicate.label}」（${duplicate.id}）重複`);
+    skippedArticles.push({ url, reason: `與既有活動 ${duplicate.id} 重複` });
+    continue;
+  }
+  // 人工整理的欄位一律留空值，不寫入 TODO 字樣：
+  // worker 會把 extraPromptInstruction 原樣接進產圖提示，空值才不會污染提示。
   extracted.articleUrl = url;
   extracted.forceWithText ??= null;
   extracted.forceStyleHint ??= null;
-  extracted.extraPromptInstruction ??=
-    `TODO(human)：請為「${extracted.fullName || extracted.label}」撰寫英文活動規則`;
+  extracted.extraPromptInstruction ??= null;
   additions.push(extracted);
   console.log(`  新增候選活動：${extracted.id}／${extracted.label}`);
 }
@@ -147,10 +154,16 @@ const prBody = [
     `  - 活動簡介：${c.blurb}`
   ),
   "",
+  "以下活動的 `extraPromptInstruction` 目前是空值（`null`），合併前請決定要不要補：",
+  ...additions.map((c) => `- \`${c.id}\``),
+  ...(skippedArticles.length > 0
+    ? ["", "本次略過的文章：", ...skippedArticles.map((a) => `- ${a.url}：${a.reason}`)]
+    : []),
+  "",
   "## 合併前請完成以下審查：",
   "",
   "1. 開啟 `worker/src/campaigns.json`，檢查檔案底部新增的活動資料。",
-  "2. **改寫 `extraPromptInstruction`**，以既有活動格式撰寫英文規則，取代 `TODO(human)`。",
+  "2. **改寫 `extraPromptInstruction`**，以既有活動格式撰寫英文規則。目前是 `null`，不補的話產圖時不帶活動規則。",
   "3. 若活動要求特定畫風，設定 `forceStyleHint`，例如水水活動使用 `cute_chibi`。",
   "4. 禁止文字時將 `forceWithText` 設為 `false`；要求文字時設為 `true`；皆可時設為 `null`。",
   "5. 視需要修正 `label`、`blurb` 或 `submitTag`。",
@@ -187,7 +200,7 @@ async function extractCampaignViaGemini(bodyText) {
 - "fullName"：文章中的完整活動名稱，10 至 40 個字元。
 - "submitTag"：LINE 編輯器中的投稿活動標籤，通常等於 fullName 或與其近似。
 - "submitDeadline"："YYYY-MM-DD" 格式，從「投稿截止」或「徵稿期限」等資訊判斷。
-- "bannerPeriod"："YYYY/MM/DD ~ MM/DD" 格式，從 Banner 露出期或曝光期判斷；找不到時填 "未公布"。
+- "bannerPeriod"：起日必須帶完整四位數年份，格式 "YYYY/MM/DD ~ MM/DD"；迄日若跨年，迄日也帶年份，格式 "YYYY/MM/DD ~ YYYY/MM/DD"。從 Banner 露出期或曝光期判斷；找不到時填 "未公布"。
 - "blurb"：以繁體中文寫一句 10 至 40 字的風格特徵說明。
 
 文章內容（已移除 HTML 標籤）：
